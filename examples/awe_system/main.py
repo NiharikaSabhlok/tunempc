@@ -36,11 +36,12 @@ J. De Schutter, M. Zanon, M. Diehl
 
 import tunempc
 import pickle
+import ipdb
 
 # load user input
 with open('user_input.pkl','rb') as f:
     user_input = pickle.load(f)
-
+# ipdb.set_trace()
 # set-up tuning problem
 tuner = tunempc.Tuner(
     f = user_input['f'],

@@ -41,8 +41,11 @@ def input_formatting(sys):
         fsize = sys['f'][0]
     else:
         fsize = sys['f'] 
+    print(f"DEBUG: fsize: {fsize}")    
     nx = fsize.size1_in(0)
     nu = fsize.size1_in(1)
+    print(f"DEBUG: nx: {nx}")
+    print(f"DEBUG: nu: {nu}")
     sys['vars'] = collections.OrderedDict()
     sys['vars']['x'] = ca.MX.sym('x',nx)
     sys['vars']['u'] = ca.MX.sym('u',nu)

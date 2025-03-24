@@ -183,10 +183,11 @@ class Pocp(object):
         p = ca.vertcat(alpha, x0star)
         self.__w = w
         self.__g_fun = ca.Function('g_fun',[w,p],[self.__g])
+        print(f'Function f: {f}')
 
         # create IP-solver
         prob = {'f': f, 'g': self.__g, 'x': w, 'p': p}
-        opts = {'ipopt':{'linear_solver':'ma57'},'expand':False}
+        opts = {'ipopt':{'linear_solver':'ma57'},'expand':False, 'max_iter':10000}
         if Logger.logger.getEffectiveLevel() > 10:
             opts['ipopt']['print_level'] = 0
             opts['print_time'] = 0

@@ -39,23 +39,25 @@ def generate_kite_model_and_orbit(N):
 
     import point_mass_model
 
+    options ={}
     # make default options object
-    options = awe.Options(True)
+    # options = awe.Options()
 
     # single kite with point-mass model
-    options['user_options']['system_model']['architecture'] = {1:0}
-    options['user_options']['system_model']['kite_dof'] = 3
-    options['user_options']['kite_standard'] = point_mass_model.data_dict()
+    options['user_options.system_model.architecture'] = {1: 0}
+    options['user_options.system_model.kite_dof'] = 3
+    options['user_options.kite_standard'] = point_mass_model.data_dict()
 
     # trajectory should be a single pumping cycle with initial number of five windings
-    options['user_options']['trajectory']['type'] = 'power_cycle'
-    options['user_options']['trajectory']['system_type'] = 'drag_mode'
-    options['user_options']['trajectory']['lift_mode']['windings'] = 1
+    options['user_options.trajectory.type'] = 'power_cycle'
+    options['user_options.trajectory.system_type'] = 'drag_mode'
+    options['user_options.trajectory.lift_mode.windings'] = 1
 
     # don't include induction effects, use simple tether drag
-    options['user_options']['induction_model'] = 'not_in_use'
-    options['user_options']['tether_drag_model'] = 'trivial'
-    options['nlp']['n_k'] = N
+    options['user_options.induction_model'] = 'not_in_use'
+    options['user_options.tether_drag_model'] = 'kite_only'
+    # options['user_options.'] = 'trivial'
+    options['nlp.n_k'] = N
 
     # get point mass model data
     options = point_mass_model.set_options(options)
@@ -66,16 +68,27 @@ def generate_kite_model_and_orbit(N):
     trial.optimize(final_homotopy_step='final')
     # trial.plot(['states','controls', 'constraints'])
     # plt.show()
-
     # extract model data
     sol = {}
     sol['model'] = trial.generate_optimal_model()
-    sol['l_t']   = trial.optimization.V_opt['xd',0,'l_t']
+    print(f"Available keys in V_opt: {trial.optimization.V_opt.keys()}")
+    # for main_keys in trial.optimization.V_opt.keys() :
+    #      print("DEBUG: Type of main_keys:", type(main_keys))
+    #      print("DEBUG: Value of main_keys:", main_keys)
+    #      print("DEBUG: Available keys in {main_keys}:", list(trial.optimization.V_opt[main_keys, 0].keys()))
+
+    #      if isinstance(main_keys, dict): 
+    #         if  main_keys.keys() is not(None) :
+    #             for sub_keys in main_keys.keys():
+    #                 print(f"Available sub-keys in {main_keys}: {trial.optimization.V_opt[main_keys].keys()}")
+
+    # print(f"Available sub-keys in x_dot: {trial.optimization.V_opt['theta', 'l_t']}")
+    sol['l_t']   = trial.optimization.V_opt['theta', 'l_t']
 
     # initial guess
     w_init = []
     for k in range(N):
-        w_init.append(trial.optimization.V_opt['xd',k][:-3])
+        w_init.append(trial.optimization.V_opt['x',k])
         w_init.append(trial.optimization.V_opt['u', k][3:6])
     sol['w0'] = ca.vertcat(*w_init)
 
@@ -83,22 +96,23 @@ def generate_kite_model_and_orbit(N):
 
 
 # discrete period of interest
-N = 40
+# N = 40
+N = 200
 awe_sol = generate_kite_model_and_orbit(N)
 
 # remove tether variables
 model = awe_sol['model']
 l_t = awe_sol['l_t']
 x_shape = model['dae']['x'].shape
-x_shape = (x_shape[0]-3, x_shape[1])
+x_shape = (x_shape[0], x_shape[1])
 x = ca.MX.sym('x',*x_shape)
-x_awe = ct.vertcat(x, l_t, 0.0, 0.0)
+x_awe = x
 
 # remove fictitious forces, tether jerk...
 u_shape = model['dae']['p'].shape
-u_shape = (u_shape[0]-4, u_shape[1])
+u_shape = (u_shape[0]-3, u_shape[1])
 u = ca.MX.sym('u',*u_shape)
-u_awe = ct.vertcat(0.0,0.0,0.0,u,0.0)
+u_awe = ct.vertcat(0.0,0.0,0.0,u)
 
 # remove algebraic variable
 z = model['rootfinder'](0.1, x_awe, u_awe)
@@ -121,7 +135,7 @@ integrator = awe_integrators.rk4root(
         model['dae'],
         model['rootfinder'],
         {'tf': 1/N, 'number_of_finite_elements':10})
-xf = integrator(x0=x_awe, p=u_awe, z0 = 0.1)['xf'][:-3]
+xf = integrator(x0=x_awe, p=u_awe, z0 = 0.1)['xf']
 qf = integrator(x0=x_awe, p=u_awe, z0 = 0.1)['qf']
 
 sys = {
@@ -130,7 +144,7 @@ sys = {
 }
 
 # cost function
-power_output = -sys['f'](x0=x, p=u)['qf']/model['t_f']/1e3
+power_output = -sys['f'](x0=x, p=u)['qf'][0]/model['t_f']/1e3
 regularization = 1/2*1e-4*ct.mtimes(u.T,u)
 
 cost = ca.Function(
@@ -144,10 +158,10 @@ w0 = awe_sol['w0']
 
 # save time-continuous dynamics
 xdot = ca.MX.sym('xdot', x.shape[0])
-xdot_awe = ct.vertcat(xdot, 0.0, 0.0, 0.0)# remove l, ldot, lddot
-z = ca.MX.sym('z', model['dae']['z']['xa'].shape[0])
-indeces = [*range(2,10)]+[*range(11,nx+3+z.shape[0])] # remove ldot, lddot, ldddot
-alg = model['dae']['alg'][indeces] 
+xdot_awe = xdot
+z = ca.MX.sym('z', model['dae']['z']['z'].shape[0])
+# indeces = [*range(2,10)]+[*range(11,nx+3+z.shape[0])] # remove ldot, lddot, ldddot
+alg = model['dae']['alg'] 
 alg_fun = ca.Function('alg_fun',[model['dae']['x'],model['dae']['p'],model['dae']['z']],[alg])
 dyn = ca.Function(
     'dae',

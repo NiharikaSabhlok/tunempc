@@ -30,7 +30,7 @@ if sys.version_info < (3,5):
 
 setup(name='tunempc',
    version='0.1.0',
-   python_requires='>=3.5, <3.8',
+   python_requires='>=3.5, <3.12',
    description='A tool for economic tuning of tracking (N)MPC problems',
    url='https://github.com/jdeschut/tunempc',
    author='Jochem De Schutter',
@@ -47,7 +47,7 @@ setup(name='tunempc',
    install_requires=[
       'numpy',
       'scipy',
-      'casadi==3.5.1',
+      'casadi==3.6.4',
       'matplotlib',
       'picos==1.2.0.post32',
    ],

@@ -35,7 +35,10 @@ def data_dict():
     data_dict['name'] = 'point_mass'
 
     data_dict['geometry'] = geometry() # kite geometry
-    data_dict['aero_deriv'] = aero_deriv() # stability derivatives
+
+    stab_derivs, aero_validity = aero_deriv()
+    data_dict['stab_derivs'] = stab_derivs # stability derivatives
+    data_dict['aero_validity'] = aero_validity
 
 
     # (optional: on-board battery model)
@@ -84,26 +87,40 @@ def geometry():
 def aero_deriv():
     # 'numerical optimal trajectory for system in pumping mode described by differential algebraic equation (focus on ap2)' licitra, 2014
 
-    aero_deriv = {}
-    
-    aero_deriv['CD0'] = 0.02
+    stab_derivs = {}
+    aero_validity = {}
 
-    return aero_deriv
+    aero_validity['alpha_max_deg'] = 35.0
+    aero_validity['alpha_min_deg'] = -20.0
+    aero_validity['beta_max_deg'] = 20.0
+    aero_validity['beta_min_deg'] = -20.0
+    # aero_validity['CD.0'] = 0.02
+    stab_derivs['CD'] = {}
+    stab_derivs['CD']['0'] = [0.102]
+    stab_derivs['CD']['alpha'] = [0.66]
+    # aero_deriv['CD0'] = 0.02
+
+    return stab_derivs, aero_validity
 
 def set_options(options):
 
-    options['params']['tether']['sigma_max'] = 3.9e9
-    options['params']['tether']['f_sigma'] = 5.0
-    options['params']['tether']['rho'] = 1450.0
+    options['params.tether.max_stress'] = 3.9e9
+    options['params.tether.stress_safety_factor'] = 5.0
+    options['params.tether.rho'] = 1450.0
 
-    options['user_options']['wind']['u_ref'] = 10.0
+    options['user_options.wind.u_ref'] = 10.0
+    # Define aerodynamic coefficient limits
+    coeff_max = [1.0, 80.0 * np.pi / 180.]
+    coeff_min = [0.0, -80.0 * np.pi / 180.]
+    options['model.system_bounds.x.coeff'] = np.array([coeff_min,coeff_max])
+    # options['model.aero.kite_dof.coeff_min'] = [0.0, -80.0 * np.pi / 180.]
 
-    options['model']['aero']['three_dof']['coeff_max'] = [1.0, 80.0 * np.pi / 180.]
-    options['model']['aero']['three_dof']['coeff_min'] = [0.0, -80.0 * np.pi / 180.]
-
-    options['model']['model_bounds']['dcoeff_max'] = [5., 5.0]
-    options['model']['model_bounds']['dcoeff_min'] = [-5., -5.0]
-    options['model']['system_bounds']['u']['dkappa'] = [-1000.0, 1000.0]
+    # Define model bounds on coefficient derivatives
+    dcoeff_max = [5., 5.0]
+    dcoeff_min = [-5., -5.0]
+    options['model.system_bounds.u.dcoeff'] = np.array([dcoeff_min, dcoeff_max])
+    # options['model.model_bounds.dcoeff_min'] = [-5., -5.0]
+    options['model.scaling.x.kappa'] = 1000
 
 
     return options

@@ -176,6 +176,7 @@ class Sqp(object):
 
             k += 1
             converged = self.__check_convergence(w0,p0,lam_g0,dw, k)
+            print(f"converged:{converged}")
 
         # Solution sanity check
         S = self.__postprocessing(w0,p0,lam_g0, k)
