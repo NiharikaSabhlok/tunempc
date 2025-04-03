@@ -56,6 +56,7 @@ def generate_kite_model_and_orbit(N):
     # don't include induction effects, use simple tether drag
     options['user_options.induction_model'] = 'not_in_use'
     options['user_options.tether_drag_model'] = 'kite_only'
+    options['model.system_bounds.theta.t_f'] = [5., 30.]
     # options['user_options.'] = 'trivial'
     options['nlp.n_k'] = N
 
@@ -97,7 +98,7 @@ def generate_kite_model_and_orbit(N):
 
 # discrete period of interest
 # N = 40
-N = 200
+N = 80
 awe_sol = generate_kite_model_and_orbit(N)
 
 # remove tether variables

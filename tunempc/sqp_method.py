@@ -143,7 +143,7 @@ class Sqp(object):
 
         # Perform SQP iterations
         converged = self.__check_convergence(w0,p0,lam_g0,0.0, 0)
-        converged = False
+        # converged = False
 
         k = 0
         while not converged:
@@ -153,6 +153,7 @@ class Sqp(object):
 
             # regularize hessian
             H = self.__regularize_hessian(w0, p0, lam_g0)
+            print(f"h: {H},   'g': {self.__jacf_fun(w0,p0)},   'a': {self.__jacg_fun(w0,p0)},   'lba': {self.__lbg - g0},  'uba': {self.__ubg - g0},    'lam_a0': {lam_g0}")
 
             # qp matrices
             qp_p = {
@@ -255,6 +256,10 @@ class Sqp(object):
                 abs(np.array([*map(min,np.array(g0) - lbg,self.__gzeros)]) +
                     np.array([*map(max,np.array(g0) - ubg,self.__gzeros)])),
                     np.inf)
+            print("f0:", f0, "Type:", type(f0), "Shape:", np.shape(f0))
+            print("infeas:", infeas, "Type:", type(infeas), "Shape:", np.shape(infeas))
+            f0 = float(f0.full().item()) if isinstance(f0, ca.DM) else float(f0)
+            infeas = float(infeas)  # Ensuring it's a standard float            
 
             self.__ls_filter = np.array([[ f0, infeas ]])
             self.__alpha = 0.0
@@ -319,6 +324,11 @@ class Sqp(object):
                         np.inf)
             else:
                 break
+
+        print("f0:", f0, "Type:", type(f0), "Shape:", np.shape(f0))
+        print("infeas:", infeas, "Type:", type(infeas), "Shape:", np.shape(infeas))
+        f0 = float(f0.full().item()) if isinstance(f0, ca.DM) else float(f0)
+        infeas = float(infeas)  # Ensuring it's a standard float                
 
         self.__alpha = alpha
         self.__ls_filter = np.append( self.__ls_filter, np.array([[ f0, infeas ]]), axis=0 )
