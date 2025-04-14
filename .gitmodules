@@ -1,6 +1,9 @@
-[submodule "external/acados"]
-	path = external/acados
-	url = https://github.com/jdeschut/acados
 [submodule "external/awebox"]
 	path = external/awebox
 	url = git@github.com:NiharikaSabhlok/awebox.git
+[submodule "external/acados"]
+	path = external/acados
+	url = git@github.com:NiharikaSabhlok/acados.git
+[submodule "external/casados-integrators"]
+	path = external/casados-integrators
+	url = https://github.com/FreyJo/casados-integrators.git
