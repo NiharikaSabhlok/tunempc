@@ -343,35 +343,33 @@ collocation_opts = {
             'interpolation_order': 4,
             'rootfinder_options':
                 {'line_search': False, 'abstolStep': TOL, 'max_iter': 20, 'print_iteration': False} #, 'abstol': TOL
-
-            # 'jit': True #   #error Code generation not supported for Collocation
         }
 
 
 integrator_casados, f_casados, l_casados = acados_simulator.create_awe_casados_integrator(dyn, model['t_f']/N,collocation_opts=collocation_opts, use_cython=False)  
-x_sim_cas, l_sim_cas, timings_cas = run_simulation(f_casados, l_casados, x0, controls, N)
-x_sim_casados, l_sim_casados, timings_casados = run_simulation(sys['f'], cost, x0, controls, N,diff_integrator=True)
+x_sim_casados, l_sim_casados, timings_casados = run_simulation(f_casados, l_casados, x0, controls, N)
+x_sim_casadi, l_sim_casadi, timings_casadi = run_simulation(sys['f'], cost, x0, controls, N,diff_integrator=True)
 x_ref_array = np.array(x_val_np)
-x_sim_casados= np.array(x_sim_casados)
-x_sim_cas=np.array(x_sim_cas)
+x_sim_casadi= np.array(x_sim_casadi)
+x_sim_casados=np.array(x_sim_casados)
 
 
 len_ref = x_ref_array.shape[0]
-len_sim = x_sim_cas.shape[0]
+len_sim = x_sim_casados.shape[0]
 max_len = max(len_ref, len_sim)
-x_sim_padded = np.pad(x_sim_cas, ((0, max_len - len_sim), (0, 0)), mode='constant')
+x_sim_padded_casados = np.pad(x_sim_casados, ((0, max_len - len_sim), (0, 0)), mode='constant')
 
 
 data = {
     'x_ref': x_ref_array[:, 0],
     'y_ref': x_ref_array[:, 1],
     'z_ref': x_ref_array[:, 2],
-    'x_sim_casadi': x_sim_padded[:, 0],
-    'y_sim_casadi': x_sim_padded[:, 1],
-    'z_sim_casadi': x_sim_padded[:, 2],
-    'x_sim_casados': x_sim_cas[:, 0],
-    'y_sim_casados': x_sim_cas[:, 1],
-    'z_sim_casados': x_sim_cas[:, 2]
+    'x_sim_casadi': x_sim_casadi[:, 0],
+    'y_sim_casadi': x_sim_casadi[:, 1],
+    'z_sim_casadi': x_sim_casadi[:, 2],
+    'x_sim_casados': x_sim_padded_casados[:, 0],
+    'y_sim_casados': x_sim_padded_casados[:, 1],
+    'z_sim_casados': x_sim_padded_casados[:, 2]
 }      
 
 df_padded = pd.DataFrame(data)
@@ -383,13 +381,11 @@ df_padded.to_csv(padded_file_path, index=False, sep='\t')
 
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
-# plt.plot([xx[0] for xx in model_x], label='AWEBox')
+
 
 ax.plot(x_ref_array[:,0], x_ref_array[:,1], x_ref_array[:,2], label='Reference Trajectory', linestyle='--')
-# ax.plot(x_integrator_array[0, :], x_integrator_array[1, :], x_integrator_array[2, :], label='Casadi Trajectory')
-ax.plot(x_sim_cas[:,0], x_sim_cas[:,1], x_sim_cas[:,2], label='Casados Trajectory')
-ax.plot(x_sim_casados[:,0], x_sim_casados[:,1], x_sim_casados[:,2], label='Casadi IRK Trajectory')
-# ax.plot(x_sim_rk[:,0], x_sim_rk[:,1], x_sim_rk[:,2], label='Casados Trajectory')
+ax.plot(x_sim_casados[:,0], x_sim_casados[:,1], x_sim_casados[:,2], label='Casados Trajectory')
+ax.plot(x_sim_casadi[:,0], x_sim_casadi[:,1], x_sim_casadi[:,2], label='RK4 Trajectory')
 
 ax.set_xlabel('X [m]')
 ax.set_ylabel('Y [m]')
