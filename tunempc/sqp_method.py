@@ -199,7 +199,10 @@ class Sqp(object):
 
         # check eigenvalues of reduced hessian
         if Hred.shape[0] > 0:
+            print(f"eigenval:{np.linalg.eigvals(Hred)}")
             min_eigval = np.min(np.linalg.eigvals(Hred))
+            print(f"min_eigval : {min_eigval}")
+            print(f"regularization_tol : {self.__options['regularization_tol']}")
             assert min_eigval > self.__options['regularization_tol'], 'Reduced Hessian is not positive definite!'
 
         # retrieve active set changes w.r.t initial guess
