@@ -188,7 +188,7 @@ class Pocp(object):
         # create IP-solver
         prob = {'f': f, 'g': self.__g, 'x': w, 'p': p}
         # opts = {'ipopt':{'linear_solver':'ma57'},'expand':False, 'max_iter':10000}
-        opts = {'ipopt':{'linear_solver':'ma57'},'expand':False, 'max_iter_eig':10000}
+        opts = {'ipopt':{'linear_solver':'mumps'},'expand':False, 'max_iter_eig':10000}
         if Logger.logger.getEffectiveLevel() > 10:
             opts['ipopt']['print_level'] = 0
             opts['print_time'] = 0
