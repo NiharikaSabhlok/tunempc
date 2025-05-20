@@ -34,6 +34,11 @@ import numpy as np
 import casadi as ca
 import casadi.tools as ct
 import pickle
+import casados_integrator as casados
+import acados_simulator
+# from casados_integrator import acados_simulators
+# import acados as acd
+# from acd import acados_simulators
 
 def generate_kite_model_and_orbit(N):
 
@@ -98,7 +103,7 @@ def generate_kite_model_and_orbit(N):
 
 # discrete period of interest
 # N = 40
-N = 80
+N = 100
 awe_sol = generate_kite_model_and_orbit(N)
 
 # remove tether variables
@@ -131,28 +136,30 @@ for i in range(constraints.shape[0]):
         constraints_new.append(constraints[i])
 
 # create integrator
-integrator = awe_integrators.rk4root(
-        'F',
-        model['dae'],
-        model['rootfinder'],
-        {'tf': 1/N, 'number_of_finite_elements':10})
-xf = integrator(x0=x_awe, p=u_awe, z0 = 0.1)['xf']
-qf = integrator(x0=x_awe, p=u_awe, z0 = 0.1)['qf']
+# integrator = awe_integrators.rk4root(
+#         'F',
+#         model['dae'],
+#         model['rootfinder'],
+#         {'tf': 1/N, 'number_of_finite_elements':10})
 
-sys = {
-    'f' : ca.Function('F',[x,u],[xf,qf],['x0','p'],['xf','qf']),
-    'h' : ca.Function('h', [x,u], [ca.vertcat(*constraints_new)])
-}
+# _, f, l = acados_simulator.create_awe_casados_integrator(dyn, model['t_f']/N)
+# xf = integrator(x0=x_awe, p=u_awe, z0 = 0.1)['xf']
+# qf = integrator(x0=x_awe, p=u_awe, z0 = 0.1)['qf']
 
-# cost function
-power_output = -sys['f'](x0=x, p=u)['qf'][0]/model['t_f']/1e3
-regularization = 1/2*1e-4*ct.mtimes(u.T,u)
+# sys = {
+#     'f' : ca.Function('F',[x,u],[xf,qf],['x0','p'],['xf','qf']),
+#     'h' : ca.Function('h', [x,u], [ca.vertcat(*constraints_new)])
+# }
 
-cost = ca.Function(
-    'cost',
-    [x,u],
-    [power_output + regularization] #+ extra_regularization
-)
+# # cost function
+# power_output = -sys['f'](x0=x, p=u)['qf'][0]/model['t_f']/1e3
+# regularization = 1/2*1e-4*ct.mtimes(u.T,u)
+
+# cost = ca.Function(
+#     'cost',
+#     [x,u],
+#     [power_output + regularization] #+ extra_regularization
+# )
 
 # initial guess
 w0 = awe_sol['w0']
@@ -171,14 +178,47 @@ dyn = ca.Function(
     ['xdot','x','u','z'],
     ['dyn'])
 
+# integrator, f, l = acados_simulator.create_awe_casados_integrator(dyn, model['t_f']/N,use_cython=False)  
+h = ca.Function('h', [x,u], [ca.vertcat(*constraints_new)])
+
 # save user input info
-with open('user_input.pkl','wb') as f:
+with open('user_input.pkl','wb') as outfile:
         pickle.dump({
-            'f': sys['f'],
-            'l': cost,
-            'h': sys['h'],
+            # 'f': f,
+            # 'l': l,
+            'h': h,
             'p': N,
             'w0': w0,
             'dyn': dyn,
             'ts': model['t_f']/N
-        },f)
+        },outfile)
+
+# xf = integrator(x0=x_awe, p=u_awe, z0 = 0.1)['xf']      # final state
+# qf = integrator(x0=x_awe, p=u_awe, z0 = 0.1)['qf']      # final power
+
+# sys = {
+#     'f' : ca.Function('F',[x,u],[xf,qf],['x0','p'],['xf','qf']),
+#     'h' : ca.Function('h', [x,u], [ca.vertcat(*constraints_new)])
+# }
+
+# # cost function
+# power_output = -sys['f'](x0=x, p=u)['qf'][0]/model['t_f']/1e3
+# regularization = 1/2*1e-4*ct.mtimes(u.T,u)
+
+# cost = ca.Function(
+#     'cost',
+#     [x,u],
+#     [power_output + regularization] #+ extra_regularization
+# )  
+
+# # save user input info
+# with open('user_input.pkl','wb') as f:
+#         pickle.dump({
+#             'f': sys['f'],
+#             'l': cost,
+#             'h': sys['h'],
+#             'p': N,
+#             'w0': w0,
+#             'dyn': dyn,
+#             'ts': model['t_f']/N
+#         },f)

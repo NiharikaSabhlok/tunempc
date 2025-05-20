@@ -36,16 +36,214 @@ J. De Schutter, M. Zanon, M. Diehl
 
 import tunempc
 import pickle
-import ipdb
+import casadi as ca
+import awebox as awe
+import awebox.tools.integrator_routines as awe_integrators
+import time
+import casados_integrator as casados
+import acados_simulator
+import numpy as np
 
 # load user input
-with open('user_input.pkl','rb') as f:
-    user_input = pickle.load(f)
-# ipdb.set_trace()
+with open('kitepower_user_input_40.pkl','rb') as outfile:
+    user_input = pickle.load(outfile)
+
+# Rebuild integrator + CasADi functions
+dyn = user_input['dyn']
+ts = user_input['ts']
+N = user_input['p']
+model_x = user_input['x_val']
+model_u = user_input['u_val']
+# model_x = np.array(model_x)
+# model_u = np.array(model_u)
+model_x = ca.DM(model_x)
+model_u = ca.DM(model_u)
+
+integrator, f, l = acados_simulator.create_awe_casados_integrator(dyn, ts, use_cython=False)
+
+###################################################
+
+N_reps = 1
+def get_time_casadi_fun(fun):
+    return fun.stats()['t_wall_total']
+
+# def run_simulation(integrator, l_fun, x0, controls, N):
+
+#     # test simulation
+
+#     if isinstance(x0, list):
+#         x_sim = [x0[0]]
+#     x_sim = [x0]
+#     l_sim = [0.0]
+
+#     for rep in range(N_reps):
+#         timings = []
+#         for k in range(N-1):
+#             print(f"sim_test {k=}")
+#             # print(k)
+#             if isinstance(x0, list):
+#                 x_sim.append(integrator(x0[k], controls[k]).full().squeeze())
+#                 l_sim.append(l_sim[-1] + l_fun(x0[k], controls[k]).full().squeeze())
+#             else:
+#                 x_sim.append(integrator(x_sim[k], controls[k]).full().squeeze())
+#                 l_sim.append(l_sim[-1] + l_fun(x_sim[k], controls[k]).full().squeeze())
+#             timings.append(get_time_casadi_fun(integrator))
+#         if rep == 0:
+#             timings_min = timings
+#         else:
+#             timings_min = [min(timings[i], timings_min[i]) for i in range(len(timings))]
+#     # print(f"{timings_min=}, mean: {np.mean(timings_min)}")
+#     return x_sim, l_sim, timings_min
+
+def run_simulation(f_fun, l_fun, x0, controls, N):
+    x_sim = [x0]
+    l_sim = [0.0]
+    timings=[]
+
+    for k in range(N-1):
+        print(f"sim_test {k=}")
+
+        x_k = x_sim[-1]
+        u_k = controls[:, k]
+
+        x_next = f_fun(x_k, u_k).full().squeeze()
+        l_next = l_fun(x_k, u_k).full().squeeze()
+
+        x_sim.append(x_next)
+        l_sim.append(l_sim[-1] + l_next)
+        if k == 0:
+            timings_min = timings
+        # else:
+        #     timings_min = [min(timings[i], timings_min[i]) for i in range(len(timings))]
+
+    return x_sim, l_sim, timings_min
+
+
+def run_jacobian_test(integrator, x0_list, controls):
+    x, u = integrator.mx_in()
+    integrator_jac = ca.jacobian(integrator(x, u), ca.vertcat(x, u))
+    jac_fun = ca.Function('integrator_jac', [x, u], [integrator_jac], {"record_time": True})
+    jac_list = []
+    N = len(x0_list)
+    for rep in range(N_reps):
+        timings = []
+        for k in range(N-1):
+            print(f"jac_test {k=}")
+            jac_list.append(jac_fun(x0_list[k], controls[k]).full())
+            timings.append(get_time_casadi_fun(jac_fun))
+        if rep == 0:
+            timings_min = timings
+        else:
+            timings_min = [min(timings[i], timings_min[i]) for i in range(len(timings))]
+    print(f"{timings_min=}, mean: {np.mean(timings_min)}")
+    return jac_list, timings_min
+
+def timing_comparison(timing_list, title=''):
+    print(f"Timing comparison {title}")
+    # print(LABELS, "speedup")
+    for label, metric in [('mean', np.mean), ('median', np.median), ('max', np.max), ('min', np.min)]:
+        timing_values = [1e3*metric(t) for t in timing_list]
+        timing_strings = [f'{t:.4f}' for t in timing_values]
+        speedup = timing_values[1] / timing_values[0]
+        print(f"{label} & {' & '.join(timing_strings)}, {speedup:.2f}")
+
+###################################################
+
+
+
+############################    CASADOS INTEGRATOR TEST    ###############################
+
+TOL = 1e-10
+x0 = model_x[:, 0]  # initial state
+# x0 = model_x[0][:-1].full().squeeze()
+x_ref = model_x      # full reference trajectory
+u_seq = model_u      # full reference input sequence
+
+
+x_sim = [x0]
+x_curr = x0
+
+controls = u_seq
+
+# CASADI SIMULATOR
+dyn = user_input['dyn']
+
+# Create correct symbolic variables
+x = ca.MX.sym('x', 11)
+xdot = ca.MX.sym('xdot', 11)
+u = ca.MX.sym('u', 3)
+z = ca.MX.sym('z', 1)
+
+# Create initial guess
+z0_default = ca.DM.zeros(12, 1)
+
+# Dynamical algebraic constraint
+# residual = dyn(xdot, x, u, z)  # This gives the residual function
+
+# dae_fun = ca.Function('dae_fun', [xdot, x, u, z], [residual])
+
+dae = {
+    'x': x,
+    'z': ca.vertcat(xdot, z),  # BOTH xdot and z treated as algebraic variables
+    'p': u,                   # controls
+    'ode': ca.MX.zeros(x.shape[0], 1),   # xdot is hidden inside z
+    'alg': dyn(xdot, x, u, z),       # full residual f(xdot, x, u, z)
+    'quad': ca.vertcat(0)
+}
+
+# dae['x'] = ca.SX.sym('x', dae['x'], 1)
+# dae['z'] = ca.SX.sym('z', dae['z'], 1)
+# dae['p'] = ca.SX.sym('p', dae['p'], 1)
+# dae['alg'] = dae['alg'](dae['x'], dae['z'], dae['p'])
+# dae['quad'] = dae['quad'](dae['x'], dae['z'], dae['p'])
+# dae['ode'] = dae['ode'](dae['x'], dae['z'], dae['p'])
+
+
+function_opts = {"record_time": True}
+# x_awe = ca.MX.sym('x', dae['x'].shape[0]-1, 1)
+# p_awe = ca.MX.sym('p', dae['p'].shape[0]-6,1)
+x_awe = ca.MX.sym('x', 11, 1)
+p_awe = ca.MX.sym('p', 3, 1) # parameters(fixed during integration)- casadi integrator expects x0 and p
+
+collocation_opts = {
+        'tf': 1/N,
+        'number_of_finite_elements': 1,
+        'collocation_scheme':'radau',
+        # 'implicit': True,  # critical!
+        # 'rootfinder': 'fast_newton',
+        'interpolation_order': 4,
+        'rootfinder_options':
+            {'line_search': False, 'abstolStep': TOL, 'max_iter': 20, 'print_iteration': False} #, 'abstol': TOL
+
+        # 'jit': True #   #error Code generation not supported for Collocation
+    }
+N_sim = 40
+
+
+# CASADI
+t0 = time.time()
+integrator_test = ca.integrator('F', 'collocation', dae, collocation_opts)
+
+# out is a dictionary like object with 'xf'(final state after integration),
+# 'zf'(final algebraic values),'qf' (integrated quadrature cost)
+out = integrator_test(x0=x_awe, p=p_awe, z0=z0_default) 
+f_casadi = ca.Function('f_casadi', [x_awe, p_awe], [out['xf']], function_opts)
+l_casadi = ca.Function('l_casadi', [x_awe, p_awe], [out['xf'][-1]])
+print(f"time to create casadi integrator {time.time() - t0} s")
+x_sim_casadi, l_sim_casadi, timings_casadi = run_simulation(f_casadi, l_casadi, x0, controls, N_sim)
+jacs_casadi, timings_jac_casadi = run_jacobian_test(f_casadi, x_sim_casadi, controls)
+
+# CASADOS
+x_sim_casados, l_sim_casados, timings_casados = run_simulation(f, l, ca.vertcat(x0, 0.0).full().squeeze(), controls, N_sim)
+jacs_casados, timings_jac_casados = run_jacobian_test(f, x_sim_casadi, controls)
+
+############################    TEST ENDS     ############################################
+
+
 # set-up tuning problem
 tuner = tunempc.Tuner(
-    f = user_input['f'],
-    l = user_input['l'],
+    f,
+    l,
     h = user_input['h'],
     p = user_input['p']
 )
