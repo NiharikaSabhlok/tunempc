@@ -44,3 +44,5 @@ figures/
 # acados
 *.json
 c_generated_code/
+trajectories_comparision.txt
+_trajectories_comparision.txt
