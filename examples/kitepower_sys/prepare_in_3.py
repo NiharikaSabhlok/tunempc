@@ -49,7 +49,7 @@ TOL = 1e-10
 N_reps = 1
 windings=1
 intervals_per_winding = 20
-time_per_winding = 26
+time_per_winding = 30
 N=windings*intervals_per_winding
 N_sim=N
 
@@ -136,11 +136,11 @@ def generate_kite_model_and_orbit(windings, intervals_per_winding, time_per_wind
     options['params.wind.z_ref'] = 100.0
     options['params.wind.power_wind.exp_ref'] = 0.15
     options['user_options.wind.model'] = 'power'
-    options['user_options.wind.u_ref'] = 10.
+    options['user_options.wind.u_ref'] = 6.
 
     # coefficient boundaries
-    options['model.system_bounds.x.coeff'] =  [np.array([-1., 0.]), np.array([1., 1.])]
-    options['model.system_bounds.u.dcoeff'] =  [np.array([-.04, -1]), np.array([.04, 1])]
+    options['model.system_bounds.x.coeff'] =  [np.array([-0.6, 0.]), np.array([0.6, 1.])]
+    options['model.system_bounds.u.dcoeff'] =  [np.array([-.08, -1]), np.array([.08, 1])]
 
     # indicate numerical nlp details
     # here: nlp discretization, with a zero-order-hold control parametrization, and
@@ -152,11 +152,12 @@ def generate_kite_model_and_orbit(windings, intervals_per_winding, time_per_wind
     options['solver.linear_solver'] = 'mumps'  # if HSL is installed, otherwise 'mumps'
     options['model.system_bounds.x.ddl_t'] = [-2.0, 2.0]
     options['model.system_bounds.theta.t_f'] = [0.0, windings*time_per_winding]
-    options['nlp.phase_fix_reelout'] = 0.7 
+    options['nlp.phase_fix_reelout'] = 0.7
+    options['solver.cost.beta.0'] = 1e-1
 
     options['model.model_bounds.acceleration.include']  = False
     options['model.model_bounds.aero_validity.include']  = False
-    options['model.model_bounds.tether_stress.include']  = False
+    options['model.model_bounds.tether_stress.include']  = True
     # (experimental) set to "True" to significantly (factor 5 to 10) decrease construction time
     # note: this may result in slightly slower solution timings
     options['nlp.compile_subfunctions'] = False
@@ -167,9 +168,9 @@ def generate_kite_model_and_orbit(windings, intervals_per_winding, time_per_wind
     options['solver.initialization.lemniscate.az_width'] = 20*np.pi/180.
     options['solver.initialization.lemniscate.el_width'] = 8*np.pi/180.
     options['solver.initialization.inclination_deg'] = 30.
-    options['solver.initialization.groundspeed'] = 20.
+    options['solver.initialization.groundspeed'] = 40.
     options['solver.initialization.theta.diam_t'] = 5e-3
-    options['solver.initialization.l_t'] = 300.0
+    options['solver.initialization.l_t'] = 500.0
     options['solver.max_iter_hippo'] = 1000
     options['solver.max_iter'] = 1000
     options['visualization.cosmetics.plot_ref'] = False
@@ -178,7 +179,7 @@ def generate_kite_model_and_orbit(windings, intervals_per_winding, time_per_wind
     trial = awe.Trial(options, 'Kitepower_LEI')
     trial.build()
     trial.optimize(final_homotopy_step = 'final')
-    trial.plot(['states', 'controls', 'isometric'])
+    trial.plot(['states', 'controls', 'isometric', 'constraints'])
     plt.show()
     # extract model data
     sol = {}
@@ -346,37 +347,37 @@ collocation_opts = {
         }
 
 
-integrator_casados, f_casados, l_casados = acados_simulator.create_awe_casados_integrator(dyn, model['t_f']/N,collocation_opts=collocation_opts, use_cython=False)  
-x_sim_casados, l_sim_casados, timings_casados = run_simulation(f_casados, l_casados, x0, controls, N)
+# integrator_casados, f_casados, l_casados = acados_simulator.create_awe_casados_integrator(dyn, model['t_f']/N,collocation_opts=collocation_opts, use_cython=False)  
+# x_sim_casados, l_sim_casados, timings_casados = run_simulation(f_casados, l_casados, x0, controls, N)
 x_sim_casadi, l_sim_casadi, timings_casadi = run_simulation(sys['f'], cost, x0, controls, N,diff_integrator=True)
 x_ref_array = np.array(x_val_np)
 x_sim_casadi= np.array(x_sim_casadi)
-x_sim_casados=np.array(x_sim_casados)
+# x_sim_casados=np.array(x_sim_casados)
 
 
 len_ref = x_ref_array.shape[0]
-len_sim = x_sim_casados.shape[0]
+len_sim = x_sim_casadi.shape[0]
 max_len = max(len_ref, len_sim)
-x_sim_padded_casados = np.pad(x_sim_casados, ((0, max_len - len_sim), (0, 0)), mode='constant')
+# x_sim_padded_casados = np.pad(x_sim_casados, ((0, max_len - len_sim), (0, 0)), mode='constant')
 
 
-data = {
-    'x_ref': x_ref_array[:, 0],
-    'y_ref': x_ref_array[:, 1],
-    'z_ref': x_ref_array[:, 2],
-    'x_sim_casadi': x_sim_casadi[:, 0],
-    'y_sim_casadi': x_sim_casadi[:, 1],
-    'z_sim_casadi': x_sim_casadi[:, 2],
-    'x_sim_casados': x_sim_padded_casados[:, 0],
-    'y_sim_casados': x_sim_padded_casados[:, 1],
-    'z_sim_casados': x_sim_padded_casados[:, 2]
-}      
+# data = {
+#     'x_ref': x_ref_array[:, 0],
+#     'y_ref': x_ref_array[:, 1],
+#     'z_ref': x_ref_array[:, 2],
+#     'x_sim_casadi': x_sim_casadi[:, 0],
+#     'y_sim_casadi': x_sim_casadi[:, 1],
+#     'z_sim_casadi': x_sim_casadi[:, 2],
+#     'x_sim_casados': x_sim_padded_casados[:, 0],
+#     'y_sim_casados': x_sim_padded_casados[:, 1],
+#     'z_sim_casados': x_sim_padded_casados[:, 2]
+# }      
 
-df_padded = pd.DataFrame(data)
+# df_padded = pd.DataFrame(data)
 
-# Save to txt file
-padded_file_path = "trajectories_comparision.txt"
-df_padded.to_csv(padded_file_path, index=False, sep='\t')
+# # Save to txt file
+# padded_file_path = "trajectories_comparision.txt"
+# df_padded.to_csv(padded_file_path, index=False, sep='\t')
 
 
 fig = plt.figure()
@@ -384,7 +385,7 @@ ax = fig.add_subplot(111, projection='3d')
 
 
 ax.plot(x_ref_array[:,0], x_ref_array[:,1], x_ref_array[:,2], label='Reference Trajectory', linestyle='--')
-ax.plot(x_sim_casados[:,0], x_sim_casados[:,1], x_sim_casados[:,2], label='Casados Trajectory')
+# ax.plot(x_sim_casados[:,0], x_sim_casados[:,1], x_sim_casados[:,2], label='Casados Trajectory')
 ax.plot(x_sim_casadi[:,0], x_sim_casadi[:,1], x_sim_casadi[:,2], label='RK4 Trajectory')
 
 ax.set_xlabel('X [m]')
