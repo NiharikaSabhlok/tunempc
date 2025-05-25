@@ -278,13 +278,15 @@ sys = {
 }
 
 # cost function
-power_output = -sys['f'](x0=x, p=u)['qf']/model['t_f']/1e3
+qf = sys['f'](x0=x, p=u)['qf']
+power_output = - qf[0] / model['t_f']/1e3
 regularization = 1/2*1e-4*ct.mtimes(u.T,u)
+yaw_rate_reg = 1e-1*qf[1]/20
 
 cost = ca.Function(
     'cost',
     [x,u],
-    [power_output + regularization] #+ extra_regularization
+    [power_output + regularization + yaw_rate_reg] #+ extra_regularization
 )
 
 
