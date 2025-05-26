@@ -148,7 +148,7 @@ def generate_kite_model_and_orbit(windings, intervals_per_winding, time_per_wind
     # within ipopt.
     options['nlp.n_k'] = int(intervals_per_winding * windings)
     options['nlp.collocation.u_param'] = 'zoh'
-    options['user_options.trajectory.lift_mode.phase_fix'] = 'single_reelout' # 'simple' # 'single_reelout'
+    options['user_options.trajectory.lift_mode.phase_fix'] = 'simple' # 'simple' # 'single_reelout'
     options['solver.linear_solver'] = 'mumps'  # if HSL is installed, otherwise 'mumps'
     options['model.system_bounds.x.ddl_t'] = [-2.0, 2.0]
     options['model.system_bounds.theta.t_f'] = [0.0, windings*time_per_winding]
@@ -204,12 +204,20 @@ def generate_kite_model_and_orbit(windings, intervals_per_winding, time_per_wind
         w_init.append(trial.optimization.V_opt['u', k][3:6])
     sol['w0'] = ca.vertcat(*w_init)
 
-    return sol, x_val, u_val, x_dot_val
+    return sol, x_val, u_val, x_dot_val, trial
 
+
+def test_model_functions(f, l, x_opt, u_opt):
+
+    x_test = [x_opt[0]]
+    l_test = [0.0]
+    for k in range(len(x_opt)):
+        x_test.append(f(x_opt[k], u_opt[k])[0].full().squeeze())
+        l_test.append(l(x_opt[k], u_opt[k]).full().squeeze())
 
 # N = 100
 
-awe_sol,awe_x_val,awe_u_val,awe_xdot_val = generate_kite_model_and_orbit(windings, intervals_per_winding, time_per_winding)
+awe_sol,awe_x_val,awe_u_val,awe_xdot_val, trial = generate_kite_model_and_orbit(windings, intervals_per_winding, time_per_winding)
 w_0=awe_sol['w0']
 
 x_val_np = [ca.DM(x).full().flatten().tolist() for x in awe_x_val]
@@ -264,6 +272,7 @@ xdot_awe = xdot
 # z = ca.MX.sym('z', model['dae']['z']['z'].shape[0])
 
 # create integrator
+# integrator = ca.integrator('F', 'collocation', model['dae'], {'collocation_scheme': 'radau', 'interpolation_order': 5, 'tf': 1/N, 'number_of_finite_elements': 10})
 integrator = awe_integrators.rk4root(
         'F',
         model['dae'],
@@ -279,17 +288,17 @@ sys = {
 
 # cost function
 qf = sys['f'](x0=x, p=u)['qf']
-power_output = - qf[0] / model['t_f']/1e3
-regularization = 1/2*1e-4*ct.mtimes(u.T,u)
-yaw_rate_reg = 1e-1*qf[1]/20
-
+# power_output = trial.optimization.p_fix_num['cost', 'power'] * qf[0] / model['t_f']
+# regularization = 0 # 1/2*1e-4*ct.mtimes(u.T,u)
+# yaw_rate_reg = 0 #
 cost = ca.Function(
     'cost',
     [x,u],
-    [power_output + regularization + yaw_rate_reg] #+ extra_regularization
+    [qf] #+ extra_regularization
 )
 
 
+test_model_functions(sys['f'], cost, awe_x_val,awe_u_val)
 
 ##################################### UPDATE ##############################
  # remove algebraic variable
