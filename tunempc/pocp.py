@@ -193,7 +193,8 @@ class Pocp(object):
             opts['ipopt']['print_level'] = 0
             opts['print_time'] = 0
             opts['ipopt']['sb'] = 'yes'
-
+        opts['ipopt.mu_init'] = 1e-8
+        opts['ipopt.warm_start_init_point'] = 'yes'
         self.__solver = ca.nlpsol('solver', 'ipopt', prob, opts)
 
         # create SQP-solver
