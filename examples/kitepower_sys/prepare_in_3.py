@@ -48,10 +48,14 @@ import pandas as pd
 TOL = 1e-10
 N_reps = 1
 windings=1
-intervals_per_winding = 20
-time_per_winding = 30
-N=windings*intervals_per_winding
+intervals_per_winding = 54
+time_per_winding = 27
+N = windings*(intervals_per_winding)
 N_sim=N
+# beta_0 = 5e-2
+beta_0 = 0.1
+acc_reg_weight = 1.0
+scaling = False
 
 def run_simulation(f_fun, l_fun, x0, controls, N,diff_integrator=False):
     # x_sim = [x0.full().squeeze()]
@@ -151,9 +155,10 @@ def generate_kite_model_and_orbit(windings, intervals_per_winding, time_per_wind
     options['user_options.trajectory.lift_mode.phase_fix'] = 'simple' # 'simple' # 'single_reelout'
     options['solver.linear_solver'] = 'mumps'  # if HSL is installed, otherwise 'mumps'
     options['model.system_bounds.x.ddl_t'] = [-2.0, 2.0]
-    options['model.system_bounds.theta.t_f'] = [0.0, windings*time_per_winding]
+    options['model.system_bounds.theta.t_f'] = [(windings*time_per_winding)-1, (windings*time_per_winding)+1] ## +2*(time_per_winding/intervals_per_winding)
     options['nlp.phase_fix_reelout'] = 0.7
-    options['solver.cost.beta.0'] = 1e-1
+    options['solver.cost.beta.0'] = beta_0
+    options['solver.weights.ddq'] =  acc_reg_weight
 
     options['model.model_bounds.acceleration.include']  = False
     options['model.model_bounds.aero_validity.include']  = False
@@ -220,12 +225,9 @@ def test_model_functions(f, l, x_opt, u_opt):
 awe_sol,awe_x_val,awe_u_val,awe_xdot_val, trial = generate_kite_model_and_orbit(windings, intervals_per_winding, time_per_winding)
 w_0=awe_sol['w0']
 
-x_val_np = [ca.DM(x).full().flatten().tolist() for x in awe_x_val]
-u_val_np = [ca.DM(u).full().flatten().tolist() for u in awe_u_val]
-# xdot_val_np = [ca.DM(xdot).full().flatten() for u in awe_xdot_val]
-u_val_np_padded = u_val_padded_list = [np.concatenate([np.zeros(3), np.array(u)]).tolist() for u in u_val_np]
 # remove tether variables
 model = awe_sol['model']
+scaling_factors = model['scaling']
 l_t = awe_sol['l_t']
 x_shape = model['dae']['x'].shape
 x_shape = (x_shape[0], x_shape[1])
@@ -243,33 +245,50 @@ u = ca.MX.sym('u',*u_shape)
 u_awe = ct.vertcat(0.0,0.0,0.0,u)
 u_0 = ct.vertcat(ca.DM.zeros(3,1), w_0[x_shape[0]:x_shape[0]+u_shape[0]])
 
-# remove algebraic variable
-z_0 = model['rootfinder'](0.1, x_0, u_0) #(12,1)
-# z_0 = rootfinder(0.1, x_0, u_0)
-z = model['rootfinder'](z_0, x_awe, u_awe) #(12,1)
+
 nx = x.shape[0]
 nu = u_shape[0]
-constraints = ca.vertcat(
-    -model['constraints'](x_awe, u_awe,z),
-    -model['var_bounds_fun'](x_awe, u_awe,z)
-)
-
-# remove redundant constraints
-constraints_new = []
-for i in range(constraints.shape[0]):
-    if True in ca.which_depends(constraints[i],ca.vertcat(x,u)):
-        constraints_new.append(constraints[i])
-
-h = ca.Function('h', [x,u], [ca.vertcat(*constraints_new)])
 
 # initial guess
-w0 = awe_sol['w0']
 
 # save time-continuous dynamics
 xdot = ca.MX.sym('xdot', x.shape[0])
 xdot_awe = xdot
 # xdot_awe = ca.vertcat(xdot,0,0,0)
 # z = ca.MX.sym('z', model['dae']['z']['z'].shape[0])
+x_scale = []
+u_scale = []
+z_scale = []
+
+x_scale=np.array(scaling_factors['x']).flatten()
+u_scale=np.array(scaling_factors['u']).flatten()
+z_scale=np.array(scaling_factors['z']).flatten()
+
+if (scaling):  
+    x_scaled = x_awe
+    u_scaled = u_awe
+
+    x_physical = x_scaled * ca.vertcat(*x_scale)
+    # u_physical = ca.vertcat(ca.DM.zeros(3,1), u_scaled * ca.vertcat(*u_scale))  # zero padd for fictitious
+    u_physical = u_scaled * ca.vertcat(*u_scale)
+    # z_physical = z* ca.vertcat(*z_scale)
+
+w0 = awe_sol['w0']
+# if scaling:
+x_scale_dm = ca.DM(x_scale)
+u_scale_clean_dm = ca.DM(u_scale[3:6])  # only physical controls
+xu_scale_single = ca.vertcat(x_scale_dm, u_scale_clean_dm)
+xu_scale_repeated = ca.repmat(xu_scale_single, N, 1)  # creates (N × len(xu_scale_single), 1) DM
+w0_physical=w0*xu_scale_repeated
+
+# remove algebraic variable
+if scaling:
+    z_0 = model['rootfinder'](0.1, x_0, u_0)
+    z_0 = z_0*ca.vertcat(*z_scale)          #(12,1)
+    z = model['rootfinder'](z_0, x_physical, u_physical) #(12,1)
+else:
+    z_0 = model['rootfinder'](0.1, x_0, u_0) #(12,1)
+    z = model['rootfinder'](z_0, x_awe, u_awe) #(12,1)
 
 # create integrator
 # integrator = ca.integrator('F', 'collocation', model['dae'], {'collocation_scheme': 'radau', 'interpolation_order': 5, 'tf': 1/N, 'number_of_finite_elements': 10})
@@ -278,8 +297,31 @@ integrator = awe_integrators.rk4root(
         model['dae'],
         model['rootfinder'],
         {'tf': 1/N, 'number_of_finite_elements':10})
-xf = integrator(x0=x_awe, p=u_awe, z0 = 0.1)['xf']
-qf = integrator(x0=x_awe, p=u_awe, z0 = 0.1)['qf']
+if scaling:
+    xf = integrator(x0=x_physical, p=u_physical, z0 = 0.1*z_scale)['xf']
+    qf = integrator(x0=x_physical, p=u_physical, z0 = 0.1*z_scale)['qf']
+    constraints = ca.vertcat(
+        -model['constraints'](x_physical, u_physical,z),
+        -model['var_bounds_fun'](x_physical, u_physical,z)
+    )
+else:
+    xf = integrator(x0=x_awe, p=u_awe, z0 = z_0)['xf']
+    qf = integrator(x0=x_awe, p=u_awe, z0 = z_0)['qf']
+    constraints = ca.vertcat(
+        -model['constraints'](x_awe, u_awe,z),
+        -model['var_bounds_fun'](x_awe, u_awe,z)
+    )
+    
+
+
+# remove redundant constraints
+constraints_new = []
+for i in range(constraints.shape[0]):
+    if True in ca.which_depends(constraints[i],ca.vertcat(x,u)):
+        constraints_new.append(constraints[i])
+
+h = ca.Function('h', [x,u], [ca.vertcat(*constraints_new)])
+    
 
 sys = {
     'f' : ca.Function('F',[x,u],[xf,qf],['x0','p'],['xf','qf']),
@@ -287,7 +329,7 @@ sys = {
 }
 
 # cost function
-qf = sys['f'](x0=x, p=u)['qf']
+# qf = sys['f'](x0=x, p=u)['qf']
 # power_output = trial.optimization.p_fix_num['cost', 'power'] * qf[0] / model['t_f']
 # regularization = 0 # 1/2*1e-4*ct.mtimes(u.T,u)
 # yaw_rate_reg = 0 #
@@ -306,8 +348,8 @@ algf  = ca.Function('algf', [model['dae']['x'], model['dae']['p'], model['dae'][
 A = ca.jacobian(model['dae']['alg'], model['dae']['z'])
 b = - algf(model['dae']['x'], model['dae']['p'], model['dae']['z'](0.0))
 rootfinder = ca.Function('rootfinder', [model['dae']['z'], model['dae']['x'], model['dae']['p']], [ca.solve(A,b)])
-z_0 = rootfinder(0.1, x_0, u_0)
-z = rootfinder(z_0, xh_awe, u_awe)    
+# z_0 = rootfinder(0.1, x_0, u_0)
+# z = rootfinder(z_0, xh_awe, u_awe)    
 
 rm_indeces = []
 z = ca.MX.sym('z', model['dae']['z']['z'].shape[0])
@@ -317,8 +359,7 @@ alg_energy = ca.vertcat(alg[:-1], model['dae']['z']['xdot'][-1] - model['dae']['
 alg_fun = ca.Function('alg_fun',[model['dae']['x'],model['dae']['p'],model['dae']['z']],[alg_energy])
 #########################################################
 
-# alg = model['dae']['alg'] 
-# alg_fun = ca.Function('alg_fun',[model['dae']['x'],model['dae']['p'],model['dae']['z']],[alg])
+
 
 dyn = ca.Function(
     'dae',
@@ -327,7 +368,16 @@ dyn = ca.Function(
     ['xdot','x','u','z'],
     ['dyn'])
 
-pickle_filename = f"kitepower_user_input_{windings*intervals_per_winding}_w_{windings}_tpw_{time_per_winding}_final_test_new.pkl"
+pickle_filename = f"kitepower_user_input_{windings*intervals_per_winding}_w_{windings}_tpw_{time_per_winding}_beta0_{beta_0}_acc_reg_{acc_reg_weight}.pkl"
+
+x_val_np = [ca.DM(x).full().flatten().tolist() for x in awe_x_val]
+u_val_np = [ca.DM(u).full().flatten().tolist() for u in awe_u_val]
+
+if scaling :
+    x_val_np_physical = x_val_np*x_scale
+
+    u_val_np_physical = u_val_np*u_scale[3:6]
+    
 
 with open(pickle_filename,'wb') as outfile:
         pickle.dump({
@@ -336,10 +386,13 @@ with open(pickle_filename,'wb') as outfile:
             'h': h,
             'p': N,
             'w0': w0,
+            'w0_physical': w0_physical,
             'dyn': dyn,
             'ts': model['t_f']/N,
             'x_val': x_val_np,
-            'u_val': u_val_np
+            'u_val': u_val_np,
+            'x_scale': x_scale,
+            'u_scale': u_scale
             # 'xdot_val':xdot_val_np
         },outfile)    
 
@@ -370,25 +423,26 @@ len_ref = x_ref_array.shape[0]
 len_sim = x_sim_casadi.shape[0]
 max_len = max(len_ref, len_sim)
 # x_sim_padded_casados = np.pad(x_sim_casados, ((0, max_len - len_sim), (0, 0)), mode='constant')
+x_sim_casadi = np.pad(x_sim_casadi, ((0, max_len - len_sim), (0, 0)), mode='constant')
 
 
-# data = {
-#     'x_ref': x_ref_array[:, 0],
-#     'y_ref': x_ref_array[:, 1],
-#     'z_ref': x_ref_array[:, 2],
-#     'x_sim_casadi': x_sim_casadi[:, 0],
-#     'y_sim_casadi': x_sim_casadi[:, 1],
-#     'z_sim_casadi': x_sim_casadi[:, 2],
-#     'x_sim_casados': x_sim_padded_casados[:, 0],
-#     'y_sim_casados': x_sim_padded_casados[:, 1],
-#     'z_sim_casados': x_sim_padded_casados[:, 2]
-# }      
+data = {
+    'x_ref': x_ref_array[:, 0],
+    'y_ref': x_ref_array[:, 1],
+    'z_ref': x_ref_array[:, 2],
+    'x_sim_casadi': x_sim_casadi[:, 0],
+    'y_sim_casadi': x_sim_casadi[:, 1],
+    'z_sim_casadi': x_sim_casadi[:, 2]
+    # 'x_sim_casados': x_sim_padded_casados[:, 0],
+    # 'y_sim_casados': x_sim_padded_casados[:, 1],
+    # 'z_sim_casados': x_sim_padded_casados[:, 2]
+}      
 
-# df_padded = pd.DataFrame(data)
+df_padded = pd.DataFrame(data)
 
-# # Save to txt file
-# padded_file_path = "trajectories_comparision.txt"
-# df_padded.to_csv(padded_file_path, index=False, sep='\t')
+# Save to txt file
+padded_file_path = "trajectories_comparision.txt"
+df_padded.to_csv(padded_file_path, index=False, sep='\t')
 
 
 fig = plt.figure()
