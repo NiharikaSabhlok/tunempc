@@ -10,10 +10,14 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from awebox.logger.logger import Logger as awelogger
+from tunempc.logger import Logger
+Logger.logger.setLevel('DEBUG')
+awelogger.logger.setLevel('DEBUG')
 
-user_input_file = 'kitepower_user_input_20_w_1_tpw_26_final_test_new.pkl'
+user_input_file = 'kitepower_user_input_54_w_1_tpw_27_beta0_0.1_acc_reg_1.0.pkl'
 # 'kitepower_user_input_120_w_2_tpw_28_final.pkl'
-convex_ref_file = 'convex_referencefile_160.pkl'
+convex_ref_file = 'convex_referencefile_54_w_1_tpw_27.pkl'
 
 # load user input
 with open(user_input_file,'rb') as outfile:
@@ -162,8 +166,8 @@ collocation_opts = {
 f=user_input['f']
 l=user_input['l']
 # CASADOS
-integrator, f_cas, l_cas = acados_simulator.create_awe_casados_integrator(user_input['dyn'], user_input['ts'], use_cython=False)
-x_sim_cas, l_sim_cas, timings_cas = run_simulation(f_cas, l_cas, x0, controls, N)
+# integrator, f_cas, l_cas = acados_simulator.create_awe_casados_integrator(user_input['dyn'], user_input['ts'], use_cython=False)
+# x_sim_cas, l_sim_cas, timings_cas = run_simulation(f_cas, l_cas, x0, controls, N)
 x_sim_casados, l_sim_casados, timings_casados = run_simulation(f, l, x0, controls, N,True)
 
 x = ca.MX.sym('x', 11)
@@ -193,7 +197,7 @@ u_awe =u
 x_ref_array = np.array(model_x.T).squeeze()
 # x_ref_array = model_x
 x_sim_casados= np.array(x_sim_casados)
-x_sim_cas= np.array(x_sim_cas)
+# x_sim_cas= np.array(x_sim_cas)
 
 
 # len_ref = x_ref_array.shape[0]
@@ -203,34 +207,35 @@ x_sim_cas= np.array(x_sim_cas)
 
 
 
-data = {
-    'x_ref': x_ref_array[:, 0],
-    'y_ref': x_ref_array[:, 1],
-    'z_ref': x_ref_array[:, 2],
-    'x_sim_casados': x_sim_cas[:, 0],
-    'y_sim_casados': x_sim_cas[:, 1],
-    'z_sim_casados': x_sim_cas[:, 2],
-    'x_sim_irk': x_sim_casados[:, 0],
-    'y_sim_irk': x_sim_casados[:, 1],
-    'z_sim_irk': x_sim_casados[:, 2],
-}      
+# data = {
+#     'x_ref': x_ref_array[:, 0],
+#     'y_ref': x_ref_array[:, 1],
+#     'z_ref': x_ref_array[:, 2],
+#     'x_sim_casados': x_sim_cas[:, 0],
+#     'y_sim_casados': x_sim_cas[:, 1],
+#     'z_sim_casados': x_sim_cas[:, 2],
+#     'x_sim_irk': x_sim_casados[:, 0],
+#     'y_sim_irk': x_sim_casados[:, 1],
+#     'z_sim_irk': x_sim_casados[:, 2],
+# }      
 
-df_padded = pd.DataFrame(data)
+# df_padded = pd.DataFrame(data)
 
-# Save to txt file
-padded_file_path = "trajectories_comparision.txt"
-df_padded.to_csv(padded_file_path, index=False, sep='\t')
+# # Save to txt file
+# padded_file_path = "trajectories_comparision.txt"
+# df_padded.to_csv(padded_file_path, index=False, sep='\t')
 
 
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 # plt.plot([xx[0] for xx in model_x], label='AWEBox')
 
-ax.plot(x_ref_array[:,0], x_ref_array[:,1], x_ref_array[:,2], label='Reference Trajectory', linestyle='--')
-# ax.plot(x_integrator_array[0, :], x_integrator_array[1, :], x_integrator_array[2, :], label='Casadi Trajectory')
-ax.plot(x_sim_casados[:,0], x_sim_casados[:,1], x_sim_casados[:,2], label='IRK Trajectory')
-ax.plot(x_sim_cas[:,0], x_sim_cas[:,1], x_sim_cas[:,2], label='Casados Trajectory')
-# ax.plot(x_sim_rk[:,0], x_sim_rk[:,1], x_sim_rk[:,2], label='Casados Trajectory')
+
+# # ax.plot(x_integrator_array[0, :], x_integrator_array[1, :], x_integrator_array[2, :], label='Casadi Trajectory')
+ax.plot(x_sim_casados[:,0], x_sim_casados[:,1], x_sim_casados[:,2], label='IRK Trajectory', linewidth=3,color='g')
+# ax.plot(x_sim_cas[:,0], x_sim_cas[:,1], x_sim_cas[:,2], label='Casados Trajectory', linewidth=2, color='b')
+ax.plot(x_ref_array[:,0], x_ref_array[:,1], x_ref_array[:,2], label='Reference Trajectory', linestyle='--', linewidth=1,color='r')
+# # ax.plot(x_sim_rk[:,0], x_sim_rk[:,1], x_sim_rk[:,2], label='Casados Trajectory')
 
 ax.set_xlabel('X [m]')
 ax.set_ylabel('Y [m]')
@@ -260,8 +265,8 @@ tuner = tunempc.Tuner(
 wsol = tuner.solve_ocp(w0 = user_input['w0'])
 
 # convexify stage cost matrices
-# Hc   = tuner.convexify(solver='mosek')
-Hc   = tuner.convexify(solver='cvxopt')
+Hc   = tuner.convexify(rho=2, solver='mosek',force=True)
+# Hc   = tuner.convexify(solver='cvxopt')
 S    = tuner.S
 
 sys = tuner.sys
