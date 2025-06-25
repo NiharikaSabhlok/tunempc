@@ -277,12 +277,16 @@ def setUpModelPicos(A, B, Q, R, N, G = None, C = None, rho = 1e-3, constr = True
     if constr:
         for i in range(period):
             if F[i] is not None:
-                obj = picos.sum(obj, abs(rho*F[i]))
+                # obj = picos.sum(obj, abs(rho*F[i]))
+                obj = picos.sum([obj, abs(rho*F[i])])
+
             if G is not None:
-                obj = picos.sum(obj, abs(rho*Fg[i]))
+                # obj = picos.sum(obj, abs(rho*Fg[i]))
+                obj = picos.sum([obj, abs(rho*Fg[i])])
     if force:
         for i in range(period):
-            obj = picos.sum(obj, abs(rho*T[i]))
+            # obj = picos.sum(obj, abs(rho*T[i]))
+            obj = picos.sum([obj, abs(rho*T[i])])
 
     M.set_objective('min', obj)
 
