@@ -105,11 +105,11 @@ def convexify(A, B, Q, R, N, G = None, C = None, opts = {'rho':1e-3, 'solver':'m
     # solve
     constraint_contribution = False
     M = solveSDP(M, opts)
-
+    equivalence_status = 'ERROR'
     status, dHc, dQc, dRc, dNc = check_convergence(M, scaling, **arg, constr = constraint_contribution)
 
     if status in ['Optimal', 'Feasible']:
-
+        equivalence_status = 'EQUIVALENCE_TYPE_A'
         Logger.logger.info('EQUIVALENCE TYPE A')
         Logger.logger.info(50*'*')
 
@@ -128,7 +128,7 @@ def convexify(A, B, Q, R, N, G = None, C = None, opts = {'rho':1e-3, 'solver':'m
         status, dHc, dQc, dRc, dNc = check_convergence(M, scaling, **arg, constr = constraint_contribution)
 
         if status in ['Optimal', 'Feasible']:
-
+            equivalence_status = 'EQUIVALENCE_TYPE_B'
             Logger.logger.info('EQUIVALENCE TYPE B')
             Logger.logger.info(50*'*')
 
@@ -139,7 +139,7 @@ def convexify(A, B, Q, R, N, G = None, C = None, opts = {'rho':1e-3, 'solver':'m
         Logger.logger.warning(50*'*')
 
         if opts['force']:
-
+            equivalence_status = 'EQUIVALENCE_TYPE_FORCED'
             Logger.logger.info('Step 3: (\u03B7_F = 1), (\u03B7_T = 1)')
             Logger.logger.info('Enforcing convexification...')
 
@@ -160,7 +160,7 @@ def convexify(A, B, Q, R, N, G = None, C = None, opts = {'rho':1e-3, 'solver':'m
     Logger.logger.info('Hessians convexified.')
     Logger.logger.info('')
 
-    return dHc, dQc, dRc, dNc
+    return dHc, dQc, dRc, dNc, status, equivalence_status
 
 def convexHessianSuppl(A, B, Q, R, N, dP, G = None, Fg = None, C = None, F = None, T = None):
 

@@ -12,12 +12,15 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from awebox.logger.logger import Logger as awelogger
 from tunempc.logger import Logger
-Logger.logger.setLevel('DEBUG')
-awelogger.logger.setLevel('DEBUG')
+# Logger.logger.setLevel('DEBUG')
+# awelogger.logger.setLevel('DEBUG')
 
-user_input_file = 'kitepower_user_input_54_w_1_tpw_27_beta0_0.1_acc_reg_1.0.pkl'
+user_input_file = 'kitepower_user_input_50_w_1_tpw_25_beta0_0.3_acc_reg_500000.0.pkl'
 # 'kitepower_user_input_120_w_2_tpw_28_final.pkl'
-convex_ref_file = 'convex_referencefile_54_w_1_tpw_27.pkl'
+convex_ref_file = '..\..\convex_referencefile_50_w_1_tpw_25_beta0_0.3_acc_reg_500000.0.pkl'
+
+# user_input_file = 'kitepower_user_input_54_w_1_tpw_27_beta0_0.15_acc_reg_80000000.0.pkl'
+# convex_ref_file = 'convex_referencefile_54_w_1_tpw_27_beta0_0.15_acc_reg_80000000.0_2.pkl'
 
 # load user input
 with open(user_input_file,'rb') as outfile:
@@ -265,7 +268,7 @@ tuner = tunempc.Tuner(
 wsol = tuner.solve_ocp(w0 = user_input['w0'])
 
 # convexify stage cost matrices
-Hc   = tuner.convexify(rho=2, solver='mosek',force=True)
+Hc,solver_status, equivalence_status  = tuner.convexify(rho=2, solver='mosek',force=True)
 # Hc   = tuner.convexify(solver='cvxopt')
 S    = tuner.S
 

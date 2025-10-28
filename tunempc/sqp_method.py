@@ -111,7 +111,7 @@ class Sqp(object):
         # qp options
         opts = {
             'enableEqualities':True,
-            'printLevel':'none',
+            'printLevel':'high',  # none|low|medium|high|debug
             'sparse': True,
             'enableInertiaCorrection':True,
             'enableCholeskyRefactorisation':1,

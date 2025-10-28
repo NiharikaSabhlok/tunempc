@@ -154,10 +154,10 @@ class Tuner(object):
         Logger.logger.info(60*'=')
         Logger.logger.info('')
 
-        dHc, _, _, _ = convexifier.convexify(S['A'], S['B'], Q, R, N, C = S['C_As'], G = S['G'], opts=opts)
+        dHc, _, _, _, solver_status, equivalence_status = convexifier.convexify(S['A'], S['B'], Q, R, N, C = S['C_As'], G = S['G'], opts=opts)
         S['Hc'] = [(S['H'][i] + dHc[i]).full() for i in range(self.__p)] # build tuned MPC hessian
 
-        return S['Hc']
+        return S['Hc'], solver_status, equivalence_status
 
     def create_mpc(self, mpc_type, N, opts = {}, tuning = None):
 

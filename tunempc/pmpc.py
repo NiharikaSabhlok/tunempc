@@ -345,11 +345,12 @@ class Pmpc(object):
 
         # create IPOPT-solver instance if needed
         if self.__options['ipopt_presolve']:
-            opts = {'ipopt':{'linear_solver':'ma57','print_level':0},'expand':False}
-            if Logger.logger.getEffectiveLevel() > 10:
-                opts['ipopt']['print_level'] = 0
-                opts['print_time'] = 0
-                opts['ipopt']['sb'] = 'yes'
+            # opts = {'ipopt':{'linear_solver':'ma57','print_level':5},'expand':False}
+            opts = {'ipopt':{'linear_solver':'mumps','print_level':5},'expand':False}
+            if Logger.logger.getEffectiveLevel() > 0:
+                opts['ipopt']['print_level'] = 5
+                opts['print_time'] = 1
+                opts['ipopt']['sb'] = 'no'
             self.__solver = ca.nlpsol('solver', 'ipopt', prob, opts)
 
         # create hessian approximation function
@@ -404,12 +405,16 @@ class Pmpc(object):
             self.__lam_g0 = self.__g(ipopt_sol['lam_g'])
 
         # solve NLP
-        sol = self.__sqp_solver.solve(self.__w0.cat, p0.cat, self.__lam_g0.cat)
+        # sol = self.__sqp_solver.solve(self.__w0.cat, p0.cat, self.__lam_g0.cat) # Not strictly necessary
 
         # store solution
-        self.__g_sol = self.__g(self.__g_fun(sol['x'], p0))
-        self.__w_sol = self.__w(sol['x'])
-        self.__extract_solver_stats()
+        # self.__g_sol = self.__g(self.__g_fun(sol['x'], p0))  #Not strictly necessary
+        # self.__w_sol = self.__w(sol['x'])
+        # self.__extract_solver_stats()
+        
+        self.__g_sol = self.__g(self.__g_fun(ipopt_sol['x'], p0))  #Not strictly necessary
+        self.__w_sol = self.__w(ipopt_sol['x'])
+        # self.__extract_solver_stats()
 
         # shift reference
         self.__index += 1
@@ -417,7 +422,8 @@ class Pmpc(object):
         # update initial guess
         self.__w0, self.__lam_g0 = self.__shift_initial_guess(
             self.__w_sol,
-            self.__g(sol['lam_g'])
+            # self.__g(sol['lam_g'])
+            self.__g(ipopt_sol['lam_g'])
             )
 
         return self.__w_sol['u',0]
