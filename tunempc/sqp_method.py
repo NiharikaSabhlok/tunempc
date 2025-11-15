@@ -137,7 +137,9 @@ class Sqp(object):
 
         """ Vanilla SQP-method, no line-search.
         """
-
+        Logger.logger.info(20*'=')
+        Logger.logger.info(10*' '+'SQP Solver running...')
+        Logger.logger.info(20*'=')
         # Pre-filter multipliers from interior-point method
         lam_g0 = self.__prefilter_lam_g(lam_g_ip)
 
@@ -272,7 +274,7 @@ class Sqp(object):
         # print stats
         if k%10 == 0:
             Logger.logger.debug('iter\tf\t\tstep\t\tinf_du\t\tinf_pr\t\talpha\t\treg')
-        Logger.logger.debug('{:3d}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.2e}\t{:.2e}'.format(
+            Logger.logger.debug('{:3d}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.2e}\t{:.2e}'.format(
             k,
             self.__ls_filter[-1,0],
             np.linalg.norm(dw),

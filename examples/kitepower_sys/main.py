@@ -1,11 +1,7 @@
 import tunempc
 import pickle
-import ipdb
 import casadi as ca
 import awebox as awe
-import awebox.tools.integrator_routines as awe_integrators
-import casados_integrator as casados
-import acados_simulator
 import time
 import numpy as np
 import matplotlib.pyplot as plt
@@ -229,23 +225,23 @@ x_sim_casados= np.array(x_sim_casados)
 # df_padded.to_csv(padded_file_path, index=False, sep='\t')
 
 
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-# plt.plot([xx[0] for xx in model_x], label='AWEBox')
+# fig = plt.figure()
+# ax = fig.add_subplot(111, projection='3d')
+# # plt.plot([xx[0] for xx in model_x], label='AWEBox')
 
 
-# # ax.plot(x_integrator_array[0, :], x_integrator_array[1, :], x_integrator_array[2, :], label='Casadi Trajectory')
-ax.plot(x_sim_casados[:,0], x_sim_casados[:,1], x_sim_casados[:,2], label='IRK Trajectory', linewidth=3,color='g')
-# ax.plot(x_sim_cas[:,0], x_sim_cas[:,1], x_sim_cas[:,2], label='Casados Trajectory', linewidth=2, color='b')
-ax.plot(x_ref_array[:,0], x_ref_array[:,1], x_ref_array[:,2], label='Reference Trajectory', linestyle='--', linewidth=1,color='r')
-# # ax.plot(x_sim_rk[:,0], x_sim_rk[:,1], x_sim_rk[:,2], label='Casados Trajectory')
+# # # ax.plot(x_integrator_array[0, :], x_integrator_array[1, :], x_integrator_array[2, :], label='Casadi Trajectory')
+# ax.plot(x_sim_casados[:,0], x_sim_casados[:,1], x_sim_casados[:,2], label='IRK Trajectory', linewidth=3,color='g')
+# # ax.plot(x_sim_cas[:,0], x_sim_cas[:,1], x_sim_cas[:,2], label='Casados Trajectory', linewidth=2, color='b')
+# ax.plot(x_ref_array[:,0], x_ref_array[:,1], x_ref_array[:,2], label='Reference Trajectory', linestyle='--', linewidth=1,color='r')
+# # # ax.plot(x_sim_rk[:,0], x_sim_rk[:,1], x_sim_rk[:,2], label='Casados Trajectory')
 
-ax.set_xlabel('X [m]')
-ax.set_ylabel('Y [m]')
-ax.set_zlabel('Z [m]')
-ax.legend()
-ax.set_title('Kite Trajectories')
-plt.show()
+# ax.set_xlabel('X [m]')
+# ax.set_ylabel('Y [m]')
+# ax.set_zlabel('Z [m]')
+# ax.legend()
+# ax.set_title('Kite Trajectories')
+# plt.show()
 
 
 

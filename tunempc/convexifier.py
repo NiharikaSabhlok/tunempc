@@ -89,7 +89,7 @@ def convexify(A, B, Q, R, N, G = None, C = None, opts = {'rho':1e-3, 'solver':'m
         opts['verbose'] = 1
     else:
         opts['verbose'] = 0
-
+    opts['verbose'] = 0
     Logger.logger.info('Construct SDP...')
     Logger.logger.info('')
     Logger.logger.info(50*'*')

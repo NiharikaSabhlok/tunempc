@@ -403,6 +403,7 @@ class Pmpc(object):
 
             self.__w0 = self.__w(ipopt_sol['x'])
             self.__lam_g0 = self.__g(ipopt_sol['lam_g'])
+            self.__extract_ipopt_solver_stats()
 
         # solve NLP
         # sol = self.__sqp_solver.solve(self.__w0.cat, p0.cat, self.__lam_g0.cat) # Not strictly necessary
@@ -414,7 +415,8 @@ class Pmpc(object):
         
         self.__g_sol = self.__g(self.__g_fun(ipopt_sol['x'], p0))  #Not strictly necessary
         self.__w_sol = self.__w(ipopt_sol['x'])
-        # self.__extract_solver_stats()
+        self.__extract_ipopt_solver_stats()
+        ipopt_info = self.__solver.stats()
 
         # shift reference
         self.__index += 1
@@ -426,7 +428,7 @@ class Pmpc(object):
             self.__g(ipopt_sol['lam_g'])
             )
 
-        return self.__w_sol['u',0]
+        return self.__w_sol['u',0], ipopt_info
 
     def step_acados(self, x0):
 
@@ -791,6 +793,10 @@ class Pmpc(object):
     def __initialize_log(self):
 
         self.__log = {
+            'ipopt_cpu': [],
+            'ipopt_iter': [],
+            'ipopt_objective': [],
+            'ipopt_status': [],
             'cpu': [],
             'iter': [],
             'f': [],
@@ -817,6 +823,15 @@ class Pmpc(object):
         }
 
         return None
+    def __extract_ipopt_solver_stats(self):
+        info = self.__solver.stats()
+        self.__log['ipopt_cpu'].append(info['t_wall_total'])
+        self.__log['ipopt_iter'].append(info['iter_count'])
+        self.__log['ipopt_status'].append(info['return_status'])
+        # self.__log['sol_x'].append(info['x'])
+        # self.__log['lam_g'].append(info['lam_g'])
+        # self.__log['ipopt_objective'].append(info['objective'])
+        # self.__log['u0'].append(self.__w(info['x'])['u',0])
 
     def __extract_solver_stats(self):
 

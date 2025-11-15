@@ -72,7 +72,7 @@ def tuner_convexification(pickle_file, beta, acc_reg, T, N):
     wsol = tuner.solve_ocp(w0 = user_input['w0'])
 
     # convexify stage cost matrices
-    Hc,solver_status, equivalence_status = tuner.convexify(rho=2, solver='mosek',force=True)
+    Hc,solver_status, equivalence_status = tuner.convexify(rho=2,solver='mosek',force=True)
     S    = tuner.S
 
     sys = tuner.sys
@@ -190,6 +190,6 @@ if __name__ == "__main__":
     # edit these two lines (or make them CLI args if you like)
     ROOT = Path(directory_path)                  # root folder containing looped_T_*_N_* dirs
     print(f"root path : {ROOT}")
-    OUT  = Path(f"tuner_convexification_results_wo_warmstarting_T_{T}_N_{N}_{part}.csv")
+    OUT  = Path(f"tuner_mosek_convexification_results_wo_warmstarting_T_{T}_N_{N}_{part}.csv")
     run(ROOT, OUT)
     print(f"Done. Wrote {OUT.resolve()}")

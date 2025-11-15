@@ -1,8 +1,9 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+from pathlib import Path
 
-
-df = pd.read_csv('time_bound_for_traj_vs_final_time.txt')  # Replace with your file path
+CSV_PATH = Path("F:/Thesis/Parameter_sweep_analysis/Analysis_results/data_folder_to_generate_graphs_for_param_analysis_chapter/Time_discretization/CSVs")
+df = pd.read_csv(CSV_PATH/'time_discretization_master.csv')  # Replace with your file path
 
 # Step 2: Preview the DataFrame (optional)
 print(df.head())
@@ -15,10 +16,10 @@ print(df.head())
 # plt.grid(True)
 # plt.show()
 
-plt.plot(df['time'], df['final_time'],marker='o')  # Replace with actual column names
-plt.xlabel('Applied Time bound')  # label x-axis
-plt.ylabel('Actual Trajectory time')  # label y-axis
-plt.title('Applied Time bound vs Actual Trajectory time')
+plt.plot(df['N'], df['twall'],marker='o')  # Replace with actual column names
+plt.xlabel('Number of Samples N')  # label x-axis
+plt.ylabel('Computation time [s]')  # label y-axis
+plt.title('Computation time vs Number of Samples for time period of 25 sec')
 
 # plt.ylim(15200, 17000)
 

@@ -57,7 +57,8 @@ for file in os.listdir(data_folder_path):
         if filter_by_optimal_flag:
             temp_beta = float(beta)
             temp_acc_reg = float(acc_reg)
-            matched_row = stats_df[(stats_df['Beta'].astype(float) == temp_beta) & (stats_df['acc_reg'].astype(float) == temp_acc_reg)]
+            temp_time = int(time_label)
+            matched_row = stats_df[(stats_df['Beta'].astype(float) == temp_beta) &(stats_df['Beta'].astype(float) == temp_beta) & (stats_df['acc_reg'].astype(float) == temp_acc_reg)]
             print("Matched rows found:")
             print(matched_row)
  

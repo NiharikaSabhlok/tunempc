@@ -48,13 +48,13 @@ import pandas as pd
 TOL = 1e-10
 N_reps = 1
 windings=1
-intervals_per_winding = 56
-time_per_winding = 28
+intervals_per_winding = 68
+time_per_winding = 34
 N = windings*(intervals_per_winding)
 N_sim=N
 # beta_0 = 5e-2
-beta_0 = 0.3
-acc_reg_weight = 5e5
+beta_0 = 0.1
+acc_reg_weight = 8e7
 scaling = False
 d=4
 
@@ -195,7 +195,7 @@ def generate_kite_model_and_orbit(windings, intervals_per_winding, time_per_wind
     sol['l_t']   = trial.optimization.V_opt['x',0,'l_t']
     sol['t_f'] = trial.optimization.V_opt['theta','t_f']
     sol["avg_power_output"]=trial.visualization.plot_dict['power_and_performance']['avg_power']
-
+    # sol["scaling"] = 
     # initial guess
     w_init = []
     x_val= []
@@ -293,6 +293,7 @@ if scaling:
 else:
     z_0 = model['rootfinder'](0.1, x_0, u_0) #(12,1)
     z = model['rootfinder'](z_0, x_awe, u_awe) #(12,1)
+    z_func = ca.Function('z_fun', [x, u], [z], ['x','u'], ['z'])
 
 # create integrator
 # integrator = ca.integrator('F', 'collocation', model['dae'], {'collocation_scheme': 'radau', 'interpolation_order': 5, 'tf': 1/N, 'number_of_finite_elements': 10})
@@ -331,11 +332,13 @@ sys = {
     'f' : ca.Function('F',[x,u],[xf,qf],['x0','p'],['xf','qf']),
     'h' : ca.Function('h', [x,u], [ca.vertcat(*constraints_new)])
 }
+sys['z'] = z_func
 
 # cost function
 # qf = sys['f'](x0=x, p=u)['qf']
 # power_output = trial.optimization.p_fix_num['cost', 'power'] * qf[0] / model['t_f']
 # regularization = 0 # 1/2*1e-4*ct.mtimes(u.T,u)
+# power_output = -sys['f'](x0=x, p=u)['qf'][0]/model['t_f']/1e3
 # yaw_rate_reg = 0 #
 cost = ca.Function(
     'cost',
@@ -372,7 +375,7 @@ dyn = ca.Function(
     ['xdot','x','u','z'],
     ['dyn'])
 
-pickle_filename = f"kitepower_user_input_{windings*intervals_per_winding}_w_{windings}_tpw_{time_per_winding}_beta0_{beta_0}_acc_reg_{acc_reg_weight}.pkl"
+pickle_filename = f"kitepower_user_input_{windings*intervals_per_winding}_w_{windings}_tpw_{time_per_winding}_beta0_{beta_0}_acc_reg_{acc_reg_weight}_with_z.pkl"
 
 x_val_np = [ca.DM(x).full().flatten().tolist() for x in awe_x_val]
 u_val_np = [ca.DM(u).full().flatten().tolist() for u in awe_u_val]
@@ -393,13 +396,15 @@ with open(pickle_filename,'wb') as outfile:
             'h': h,
             'p': N,
             'w0': w0,
+            'z': sys['z'],
             'w0_physical': w0_physical,
             'dyn': dyn,
             'ts': model['t_f']/N,
             'x_val': x_val_np,
             'u_val': u_val_np,
             'x_scale': x_scale,
-            'u_scale': u_scale
+            'u_scale': u_scale,
+            'scaling_factor' : scaling_factors
             # 'xdot_val':xdot_val_np
         },outfile)    
 

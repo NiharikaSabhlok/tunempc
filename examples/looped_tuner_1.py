@@ -102,10 +102,10 @@ def run(root: Path, out_csv: Path):
     rows = []
     for dirpath, dirnames, filenames in os.walk(root):
         folder = Path(root)
-	Logger.logger.info(f'folder path {folder }...')
-	Logger.logger.info(f'root path {root }...')
-	printf(f'folder path {folder }...')
-	printf(f'folder path {root }...')
+        Logger.logger.info(f'folder path {folder }...')
+        Logger.logger.info(f'root path {root }...')
+        print(f'folder path {folder }...')
+        print(f'folder path {root }...')
         T_folder = T
         N_folder = N
         print(f"Processing folder: {folder}, T={T_folder}, N={N_folder}")
