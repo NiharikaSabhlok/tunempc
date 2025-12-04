@@ -24,7 +24,7 @@ import os
 # --------------------------- Configuration ------------------------------------
 # MASTER_CSV = Path("F:/Thesis/Parameter_sweep_analysis/Analysis_results/files/master_filtered.csv")
 # DATA_DIR   = Path("F:/Thesis/Parameter_sweep_analysis/loop_t_27_N_54")  # contains the per-run CSVs
-DATA_FOLDER = Path("F:/Thesis/Parameter_sweep_analysis/Analysis_results/data_folder_to_generate_graphs_for_param_analysis_chapter/beta_and_acc_reg_validation/plot_traj")
+DATA_FOLDER = Path("F:/Thesis/Parameter_sweep_analysis/Analysis_results/data_folder_to_generate_graphs_for_param_analysis_chapter/beta_and_acc_reg_refined")
 FILENAME_GLOB = "*.csv"                             # adjust if needed
 FLOAT_TOL = 1e-6                                    # tolerance for float equality
 SAVE_FIG = Path("awe_xyz_3d_plot.png")
@@ -32,9 +32,13 @@ columns_to_extract = ['x_q10_0', 'x_q10_1', 'x_q10_2']
 x_col = 'x_q10_0'
 y_col = 'x_q10_1'
 z_col = 'x_q10_2'
-folder_pattern = re.compile(r'Beta_and_acc_reg_wo_warmstarting_sol_beta([\d.eE+-]+)_acc_reg_([\d.eE+-]+)_N_(\d+)_time_(\d+\w*)')
+folder_pattern = re.compile(r'Beta_and_acc_reg_sweep_wo_warmstarting_sol_beta([\d.eE+-]+)_acc_reg_([\d.eE+-]+)_N_(\d+)_time_(\d+)')
 # folder_pattern = re.compile(r'Time_discretization_sweep_wo_warmstarting_sol_beta([\d.eE+-]+)_acc_reg_([\d.eE+-]+)_N_(\d+)_time_(\d+\w*)')
 # ------------------------------------------------------------------------------
+
+beta_opti = 0.05
+acc_opti = 1e7
+T_opti = '25'
 
 grouped_data = {}
 main_param_val=[]
@@ -60,6 +64,23 @@ def latexify():
               }
     matplotlib.rcParams.update(params_MPL_Tex)
 
+def draw_tethers_3d(ax, X, Y, Z, x_g=0.0, y_g=0.0, z_g=0.0, step=5,color_line="gray"):
+    """
+    Plot very light dotted lines from ground point (x_g,y_g,z_g)
+    to each (X[k], Y[k], Z[k]) every `step` samples.
+    """
+    for k in range(0, len(X), step):
+        ax.plot(
+            [x_g, X[k]],
+            [y_g, Y[k]],
+            [z_g, Z[k]],
+            linestyle=":",
+            linewidth=0.7,
+            color=color_line,
+            alpha=0.5,
+            zorder=0,
+        )
+
 def parse_folder(name: str):
     m = folder_pattern.match(name)   # or .search(name) if it’s not anchored at start
     if not m:
@@ -72,7 +93,7 @@ def parse_folder(name: str):
 
 # master = pd.read_csv(MASTER_CSV)
 latexify()
-for name in os.listdir(DATA_FOLDER):
+for name in os.listdir(DATA_FOLDER/"plot_traj"):
     if name.lower().endswith(".csv"): 
     # if r["beta"]==0.1:
     #     beta = r["beta"]
@@ -86,8 +107,8 @@ for name in os.listdir(DATA_FOLDER):
     #         acc=float(f"{acc:.1f}")
         # data_file=find_match(beta,acc,t)
         beta, acc, N, t = parse_folder(name)
-        if t :#in ['36','37','38','39','40']:
-            data_file=os.path.join(DATA_FOLDER, name)  
+        if acc in [1e7,5e6,5e7] and beta in [0.05,0.15,0.2,0.4] and t in[T_opti]:
+            data_file=os.path.join(DATA_FOLDER,"plot_traj" ,name)  
             try:
                 df = pd.read_csv(data_file)
                 df = df[[col for col in columns_to_extract if col in df.columns]]
@@ -123,7 +144,7 @@ fig = plt.figure(figsize=(12, 8))
 ax = fig.add_subplot(111, projection='3d')
 
 # optional reference point
-ax.scatter(0, 0, 0, color='red', marker='o', s=40, label='origin')
+ax.scatter(0, 0, 0, color='red', marker='o', s=40, label=r'Ground Station')
 
 legend_handles, legend_labels = [], []
 
@@ -147,30 +168,40 @@ for i, param in enumerate(final_param_list):
 
         # label only once per parameter group
         # label = f"β={beta:g}, a={acc:g}, t={t}" if first_label else None
-        label = rf"$\beta={beta}$" if first_label else None
-        ax.plot(x, y, z, lw=1.8, color=colors[i], label=label)
+        # label = label = rf"$\mathrm{{weight}}_{{\mathrm{{ddq}}}} = {acc/1e8}$" if first_label else None
+        label = rf"$\beta={beta}, \mathrm{{weight}}_{{\mathrm{{ddq}}}}={acc/1e8}$" if first_label else None
+        if acc==acc_opti and beta==beta_opti:
+            ax.plot(x, y, z, lw=1.8, color=colors[i], label=label, linewidth=2.5)
+            draw_tethers_3d(ax, x, y, z, step=5, color_line=colors[i])
+        else:
+            ax.plot(x, y, z, lw=1.8, color=colors[i], label=label, alpha=0.6)
+            # draw_tethers_3d(ax, x, y, z, step=5, color_line=colors[i])
+            
         first_label = False
 
     # custom legend handle for consistency (in case no line got a label)
-    legend_handles.append(Line2D([0], [0], color=colors[i], lw=2))
-    # legend_labels.append(f"β={beta:g}, a={acc:g}, t={t}")
-    legend_labels.append(rf"$\beta={beta}$")
+    # legend_handles.append(Line2D([0], [0], color=colors[i], lw=2))
+    # # legend_labels.append(f"β={beta:g}, a={acc:g}, t={t}")
+    # legend_labels.append(rf"$\beta={beta}$")
     # time_iterated=t
 
 # axes & aesthetics
 ax.set_xlabel(r"$x\ \mathrm{[m]}$")
 ax.set_ylabel(r"$y\ \mathrm{[m]}$")
 ax.set_zlabel(r"$z\ \mathrm{[m]}$")
-ax.set_title("3D Trajectories by (β, acc_reg, t)")
+# ax.set_title("3D Trajectories by (β, acc_reg, t)")
 ax.grid(True, which='both', alpha=0.25)
 
 # view angle
-ax.view_init(elev=28, azim=45)
+# ax.view_init(elev=28, azim=45)
+ax.view_init(elev=13, azim=35)
 ax.set_box_aspect((1, 1, 1))  # equal-ish proportions
 
 # legend outside
-ax.legend(legend_handles, legend_labels, loc='center left',
-          bbox_to_anchor=(1.02, 0.5), fontsize='small', title='Parameters', frameon=True)
+# ax.legend(legend_handles, legend_labels, loc='center left',
+#           bbox_to_anchor=(1.02, 0.5), fontsize='small', title='Parameters', frameon=True)
+ax.legend(loc='upper right',
+          bbox_to_anchor=(0.95, 0.9), frameon=True,framealpha=0.8)
 
 for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
         axis.pane.set_edgecolor("none")
@@ -183,7 +214,7 @@ for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
 plt.tight_layout()
 
 # save + show
-out_path = OUT_DIR / f"Parametric_sweep_trajectories_for_diff_beta_acc_8e7.png"
-plt.savefig(out_path, dpi=200, bbox_inches='tight')
+out_path = OUT_DIR / f"refined_traj_for_T_{T_opti}_acc_{acc_opti}_beta_{beta_opti}.png"
+plt.savefig(out_path, dpi=300, bbox_inches='tight')
 print(f"Saved plot to: {out_path}")
 plt.show()

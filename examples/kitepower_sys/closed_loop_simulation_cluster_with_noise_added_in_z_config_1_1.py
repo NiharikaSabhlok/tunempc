@@ -25,7 +25,8 @@ from tunempc.logger import Logger
 # --------------------------------------------------------------------------------------
 # 1) USER CONFIG
 # --------------------------------------------------------------------------------------
-ROOT=Path("/pfs/data6/home/fr/fr_fr/fr_ns591/code/examples/files")
+# ROOT=Path("/pfs/data6/home/fr/fr_fr/fr_ns591/code/examples/files")
+ROOT=Path("F:/Thesis/Parameter_sweep_analysis/Analysis_results/files")
 CSV_PATH   = ROOT / "master_filtered_new.csv"         # CSV with columns: t, n, beta, accreg (names can vary; we auto-map)
 # user_pickle_folder    = Path("F:/Thesis/Parameter_sweep_analysis/Analysis_results/files/test_input_files")  # folder with user_input pickles
 # convex_pickle_folder  = Path("F:/Thesis/Parameter_sweep_analysis/Analysis_results/files/test_convexified_files")
@@ -33,7 +34,7 @@ user_pickle_folder    = ROOT / "input_files"  # folder with user_input pickles
 convex_pickle_folder  = ROOT / "convexified_files"  # folder with convexified reference pickles
 ROW_RANGE  = (0,1)              # inclusive (0-based): process rows 10..24 #299
 # NSIM       = 66                    # closed-loop steps
-NMPC       = 10                     # prediction horizon
+NMPC       =3                      # prediction horizon
 WSTD       = 0.00                  # process-noise std (0 disables)
 VSTD       = 0.00                  # measurement-noise std (0 disables)
 SEED       = 0                   # RNG seed for noise
@@ -55,10 +56,11 @@ scaling_lambda = 4.96665
 #                     x_meas[y_vel_index] = x_true[y_vel_index]*( 1 + noise_to_be_added[k])
 #                     x_meas[z_vel_index] = x_true[z_vel_index]*( 1 + noise_to_be_added[k])
 
-b_add_noise = True
+b_add_noise = False
 CONFIG=1
 indices_for_adding_noise=[]
-array_of_percentage_of_traj = [0.4,0.6]
+array_of_percentage_of_traj = [0.4]
+array_of_percentage_of_traj_np = np.array(array_of_percentage_of_traj, dtype=float)
 noise_to_be_added=[0.5,0.8]
 dz=5
 DISTURB_VELOCITY = False
@@ -83,7 +85,7 @@ FILE_PATTERN = {
 NSIM = 66
 
 # Disturbance settings
-GAUSS_W_STD = 0.02  # process noise std (scalar or len-nx array). Set 0.0 for none
+GAUSS_W_STD = 0.0  # process noise std (scalar or len-nx array). Set 0.0 for none
 
 controller_colors = {"EMPC" : "#5726DD" ,
                      "TUNEMPC" : "#11BC83",
@@ -138,7 +140,7 @@ def build_controllers(user_input, sol, Nmpc):
     opts["ipopt_presolve"] = True
     opts["max_iter"] = 400
 
-    # Add MPC slacks to active constraints. :contentReference[oaicite:3]{index=3}
+    # Add MPC slacks to active constraints. 
     mpc_sys = preprocessing.add_mpc_slacks(
         sol["sys"], sol["lam_g"], sol["indeces_As"], slack_flag="active"
     )
@@ -149,12 +151,12 @@ def build_controllers(user_input, sol, Nmpc):
 
     ctrls = {}
 
-    # EMPC — economic cost l(x,u). Uses Pmpc.step(...) online. :contentReference[oaicite:4]{index=4}
-    ctrls["EMPC"] = pmpc.Pmpc(
-        N=Nmpc, sys=mpc_sys, cost=user_input["l"],
-        wref=sol["wsol"], lam_g_ref=sol["lam_g"],
-        sensitivities=sol["S"], options=opts
-    )
+    # # EMPC — economic cost l(x,u). Uses Pmpc.step(...) online. :contentReference[oaicite:4]{index=4}
+    # ctrls["EMPC"] = pmpc.Pmpc(
+    #     N=Nmpc, sys=mpc_sys, cost=user_input["l"],
+    #     wref=sol["wsol"], lam_g_ref=sol["lam_g"],
+    #     sensitivities=sol["S"], options=opts
+    # )
 
     # Tracking shell + dual resets
     tracking_cost = mtools.tracking_cost(nx + nu + ns)
@@ -162,33 +164,70 @@ def build_controllers(user_input, sol, Nmpc):
     lam_g0["dyn"] = 0.0
     lam_g0["g"]   = 0.0
 
-    # TMPC_1 — vanilla tracking weights
-    tuning_t1 = {"H":[np.diag((nx+nu)*[1.0] + ns*[1e-10])]*user_input["p"],
-                 "q":sol["S"]["q"]}
-    ctrls["TMPC_1"] = pmpc.Pmpc(
-        N=Nmpc, sys=mpc_sys, cost=tracking_cost,
-        wref=sol["wsol"], tuning=tuning_t1, lam_g_ref=lam_g0,
-        sensitivities=sol["S"], options=opts
-    )
+    # # TMPC_1 — vanilla tracking weights
+    # tuning_t1 = {"H":[np.diag((nx+nu)*[1.0] + ns*[1e-10])]*user_input["p"],
+    #              "q":sol["S"]["q"]*0}
+    # print(f"tuning_t1 q: {tuning_t1['q']}")
+    # ctrls["TMPC_1"] = pmpc.Pmpc(
+    #     N=Nmpc, sys=mpc_sys, cost=tracking_cost,
+    #     wref=sol["wsol"], tuning=tuning_t1, lam_g_ref=lam_g0,
+    #     sensitivities=sol["S"], options=opts
+    # )
 
     # TMPC_2 — hand-tuned (from your open-loop) :contentReference[oaicite:5]{index=5}
     Ht2 = [np.diag([0.1,0.1,0.1, 1,1,1, 1e3, 1,100, 1,1,1, 1,1] + [1e-10]*ns)]*user_input["p"]
     tuning_t2 = {"H":Ht2, "q":sol["S"]["q"]}
+    print(f"tuning_t2 q: {tuning_t2['q']}")
     ctrls["TMPC_2"] = pmpc.Pmpc(
         N=Nmpc, sys=mpc_sys, cost=tracking_cost,
         wref=sol["wsol"], tuning=tuning_t2, lam_g_ref=lam_g0,
         sensitivities=sol["S"], options=opts
     )
 
-    # TUNEMPC — convexified Hessians (first-order equivalent tracker). 
-    tuning_tuned = {"H":sol["S"]["Hc"], "q":sol["S"]["q"]}
-    ctrls["TUNEMPC"] = pmpc.Pmpc(
-        N=Nmpc, sys=mpc_sys, cost=tracking_cost,
-        wref=sol["wsol"], tuning=tuning_tuned, lam_g_ref=lam_g0,
-        sensitivities=sol["S"], options=opts
-    )
+    # # TUNEMPC — convexified Hessians (first-order equivalent tracker). 
+    # tuning_tuned = {"H":sol["S"]["Hc"], "q":sol["S"]["q"]}
+    # ctrls["TUNEMPC"] = pmpc.Pmpc(
+    #     N=Nmpc, sys=mpc_sys, cost=tracking_cost,
+    #     wref=sol["wsol"], tuning=tuning_tuned, lam_g_ref=lam_g0,
+    #     sensitivities=sol["S"], options=opts
+    # )
 
     return ctrls, mpc_sys
+
+def run_simulation(f_fun, x0, controls, N,diff_integrator=False):
+    # x_sim = [x0.full().squeeze()]
+    x_sim = []
+    x_sim.append(x0)
+    # l_sim = [0.0]
+    # timings=[]
+
+    for k in range(N-1):
+        print(f"sim_test {k=}")
+
+        x_k = x_sim[-1]
+        u_k = controls[k]
+
+        # start_time = time.time()
+        if diff_integrator:
+            tet_len = x_k[-3]
+            res = f_fun(x_k, u_k)
+            xf=res[0]
+            x_next = xf.full().squeeze()
+            # x_next = np.append(x_next,[tet_len,0,0])
+        #     l_next = res[1].full().squeeze()
+        # else:
+        #     x_next = f_fun(x_k, u_k).full().squeeze()
+        #     l_next = l_fun(x_k, u_k).full().squeeze()
+        print(f"x_next_shape {np.shape(x_next)}")
+        # elapsed_time = time.time() - start_time
+        
+        if np.isnan(x_next).any():
+            break
+        x_sim.append(x_next)
+        # l_sim.append(l_sim[-1] + l_next)
+        # timings.append(elapsed_time)
+    
+    return x_sim
 
 def simulate_forward(F, x, u):
     """Advance plant with sys['f'] which has signature F(x0, p) -> {'xf':...}."""
@@ -199,23 +238,44 @@ def calculate_power(lagrange_multiplier, x_l_t, x_dl_t):
     # power = abs(lagrange_multiplier) * x_l_t * x_dl_t
     power = lagrange_multiplier * x_l_t * x_dl_t
     return power
+
+def f_fun(f_integrator, x, u):
+    # call the integrator with the right argument names
+    res = f_integrator(x0=x, u=u)   # or whatever the arg names are
+    xf = res['xf']                  # DM
+    qf = res['qf']                  # DM (stage cost)
+    return xf, qf
         
 
-def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gauss_v_std=0.0, seed=0):
+def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, outdir):
     nx = int(sol["sys"]["vars"]["x"].shape[0])
     nu = int(sol["sys"]["vars"]["u"].shape[0])
+    # nx=int(user_input["x_val"].shape[0])
+    # nu = int(user_input["u_val"].shape[0])
     p  = int(user_input["p"])
+    print(f"p: {p}")
     
-    indices_for_adding_noise = (p * array_of_percentage_of_traj).astype(int)
+    # indices_for_adding_noise = (p * array_of_percentage_of_traj).astype(int)
+    indices_for_adding_noise = set((p * array_of_percentage_of_traj_np).astype(int).tolist())
+    print(f"indices_for_adding_noise: {indices_for_adding_noise}")
     
-    l_opt, h_opt, x_ref, u_ref, z_ref, power_ref, lt_ref, dlt_ref = [], [], [], [], [], [],[],[]
+    l_opt, h_opt, x_ref, u_ref, z_ref, power_ref, lt_ref, dlt_ref, x_ref_awebox, u_ref_awebox = [], [], [], [], [], [],[],[],[],[]
     log_ref = {"x_ref": [], "u_ref": [], "l_ref": [], "h_ref": [], "power_ref": [], "avg_power":[]}
     
     for k in range(Nsim):
+    # for k in range(50):
+        index=k%p
         xr = sol["wsol"]["x", k % p]
         ur = sol["wsol"]["u", k % p]
+        # xr=user_input["x_val"][:, k % p]
+        # ur=user_input["u_val"][:, k % p]
+        start=k*(nx+nu)
+        xr_awebox=user_input['w0'][start: (start+nx)]
+        ur_awebox=user_input['w0'][(start+nx): (start+nx+nu)]
         x_ref.append(xr)
         u_ref.append(ur)
+        x_ref_awebox.append(xr_awebox)
+        u_ref_awebox.append(ur_awebox)
         l_opt.append(float(user_input["l"](xr, ur).full()[0, 0]))
         # z_ref.append(float(user_input["z"](xr*scaling_x, ur*scaling_u).full()[0, 0]))
         z_temp = user_input["z"](xr, ur)
@@ -229,7 +289,7 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
             h_opt.append(0.0)
 
     # add terminal reference state so x_ref has length Nsim+1
-    x_ref.append(sol["wsol"]["x", (Nsim % p)])
+    # x_ref.append(sol["wsol"]["x", (Nsim % p)])
     power_array = np.array([float(p) for p in power_ref])
     avg_power = np.mean(power_array)
     print(avg_power)
@@ -240,12 +300,54 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
     log_ref['l_ref']=l_opt
     log_ref['power_ref']=power_array
     
-    rng = np.random.default_rng(seed)
-    w_std = (np.ones(nx)*gauss_w_std).reshape(nx,1) if np.isscalar(gauss_w_std) else np.array(gauss_w_std).reshape(nx,1)
-    v_std = (np.ones(nx)*gauss_v_std).reshape(nx,1) if np.isscalar(gauss_v_std) else np.array(gauss_v_std).reshape(nx,1)
+    x_val_np = [np.array(x.full()).flatten() for x in x_ref]
+    u_val_np = [np.array(u.full()).flatten() for u in u_ref]
+    
+    # f_integrator = sol['sys']['f']
+    # sol_f,sol_l=f_fun(f_integrator, x_val_np[0], u_val_np[0])
+    # sol_f = sol['sys']['f']['xf']
+    # sol_l = sol['sys']['f']['qf']
 
-    x0 = sol["wsol"]["x",0]
-    log = {key:{name:[] for name in ctrls.keys()} for key in ["x","u","l","h","power","lambda","avg_power"]}
+    # x_sim_casadi, l_sim_casadi = run_simulation(
+    #     user_input['f'], user_input['l'],
+    #     x_val_np[0],
+    #     u_val_np,
+    #     50,
+    #     diff_integrator=True
+    # )
+    
+    x_sim_casadi = run_simulation(
+        F,
+        x_val_np[0],
+        u_val_np,
+        Nsim,
+        diff_integrator=True
+    )
+    
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    x_ref_array = np.array(x_val_np)
+    x_sim_casadi= np.array(x_sim_casadi)
+
+    ax.plot(x_ref_array[:,0], x_ref_array[:,1], x_ref_array[:,2], label='Reference Trajectory', linestyle='--')
+    # ax.plot(x_sim_casados[:,0], x_sim_casados[:,1], x_sim_casados[:,2], label='Casados Trajectory')
+    ax.plot(x_sim_casadi[:,0], x_sim_casadi[:,1], x_sim_casadi[:,2], label='RK4 Trajectory')
+
+    ax.set_xlabel('X [m]')
+    ax.set_ylabel('Y [m]')
+    ax.set_zlabel('Z [m]')
+    ax.legend()
+    ax.set_title('Kite Trajectories')
+    plt.savefig(outdir/"integrator_output.png", dpi=200, bbox_inches="tight")
+    plt.close()
+    # plt.show()
+    # rng = np.random.default_rng(seed)
+    # w_std = (np.ones(nx)*gauss_w_std).reshape(nx,1) if np.isscalar(gauss_w_std) else np.array(gauss_w_std).reshape(nx,1)
+    # v_std = (np.ones(nx)*gauss_v_std).reshape(nx,1) if np.isscalar(gauss_v_std) else np.array(gauss_v_std).reshape(nx,1)
+
+    # x0 = sol["wsol"]["x",0]
+    x0=x_ref[0]
+    log = {key:{name:[] for name in ctrls.keys()} for key in ["x","u","l","h","power","lambda","avg_power","ipopt_iterations","ipopt_twall","ipopt_status"]}
     
     power_params = {key:{name:[] for name in ctrls.keys()} for key in ["z_k","lt_k","dl_t_k","power"]}
 
@@ -258,8 +360,6 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
         for k in range(Nsim):
             # measurement noise (optional)
             x_meas = x_true
-            if np.any(v_std):
-                x_meas = ca.DM(np.array(x_true) + rng.normal(0.0, v_std).reshape(nx,1))
             if b_add_noise :
                 if k in indices_for_adding_noise:
                     if DISTURB_VELOCITY :
@@ -271,7 +371,7 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
                         # x_meas[x_pos_index] = x_true[x_vel_index]*( 1 + noise_to_be_added[noise_index])
                         # x_meas[y_pos_index] = x_true[y_vel_index]*( 1 + noise_to_be_added[noise_index])
                         # x_meas[z_pos_index] = x_true[z_vel_index]*( 1 + noise_to_be_added[noise_index])
-                        x_meas[z_pos_index] = x_true[z_vel_index] + dz*noise_to_be_added[noise_index]
+                        x_meas[z_pos_index] = x_true[z_pos_index] + dz*noise_to_be_added[noise_index]
                         x_meas[x_pos_index] = np.sqrt(-x_meas[z_pos_index]**2 - x_true[y_pos_index]**2 + x_true[index_lt]**2)
                         noise_index += 1
  
@@ -279,14 +379,15 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
             Logger.logger.info(10*' '+f'Evaluating Step {k} of Controller {name}.')
             Logger.logger.info(10*'=')
             # MPC action
-            u = ctrl.step(x_meas)                          # online control from Pmpc. :contentReference[oaicite:7]{index=7}
+            # ipopt_iteration, ipopt_twall, ipopt_status, u = ctrl.step(x_meas)      
+            u = ctrl.step(x_true)
+            # u=u_ref[k]
 
             # stage cost & constraint at *true* state (pre-process-noise)
             lk = float(user_input["l"](x_true, u).full()[0,0])
             hk = float(user_input["h"](x_true, u).full()[0,0]) if "h" in user_input else 0.0
 
-            # plant propagation
-            x_next = simulate_forward(F, x_true, u)
+            
             # z_k= user_input["z"](x_true*scaling_x, u*scaling_u)
             z_k = user_input["z"](x_true, u).full()[-1]
             lt_k = x_true[index_lt]*scaling_x[index_lt]
@@ -297,10 +398,10 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
             power_params["dl_t_k"][name].append(float(dl_t_k))
             power_k = calculate_power(z_k*scaling_lambda, lt_k, dl_t_k)
             power_params["power"][name].append(float(power_k))
-            # process noise after propagation
-            if np.any(w_std):
-                x_next = ca.DM(np.array(x_next) + rng.normal(0.0, w_std).reshape(nx,1))
-
+            
+            # plant propagation
+            x_next = simulate_forward(F, x_meas, u)
+           
             # log
             log["u"][name].append(np.array(u.full()).ravel())
             log["l"][name].append(lk)
@@ -310,7 +411,13 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
             x_true = x_next
             log["x"][name].append(x_true)
             log["avg_power"][name]=np.mean(np.array(log["power"][name]))
-
+            
+            
+        controller_log = ctrl.log
+        log["ipopt_iterations"][name]=ctrl.log["ipopt_iter"]
+        log["ipopt_twall"][name]=ctrl.log["ipopt_cpu"]
+        log["ipopt_status"][name]=ctrl.log["ipopt_status"]
+            
         ctrl.reset()
         indices_for_adding_noise.clear()
     return log, log_ref
@@ -344,12 +451,28 @@ def save_controller_csvs(outdir: Path, name: str, log, sol, user_input):
     # l/h: (N,)
     L = np.array(log["l"][name]).reshape(-1,1)
     H = np.array(log["h"][name]).reshape(-1,1)
-
+    
+    
     np.savetxt(outdir/f"{name}_traj_x.csv", X, delimiter=",")
     np.savetxt(outdir/f"{name}_traj_u.csv", U, delimiter=",")
     np.savetxt(outdir/f"{name}_stage_cost.csv", L, delimiter=",")
     np.savetxt(outdir/f"{name}_constraint.csv", H, delimiter=",")
     
+def save_controller_ipopt_stats_csvs(outdir: Path, ctrls, log):
+    """Save IPOPT stats for all controllers into a single CSV.
+
+    Columns: iter_count_{name}, t_wall_total_{name}, return_status_{name}
+    """
+    # outdir.mkdir(parents=True, exist_ok=True)
+
+    data = {}
+    for name in ctrls.keys():
+        data[f"iter_count_{name}"]     = log["ipopt_iterations"][name]
+        data[f"t_wall_total_{name}"]   = log["ipopt_twall"][name]
+        data[f"return_status_{name}"]  = log["ipopt_status"][name]
+
+    df = pd.DataFrame(data)
+    df.to_csv(outdir / "ipopt_stats.csv", index=False)
     
 def _to_float_array(seq):
     return np.array([float(v) for v in seq]).reshape(-1, 1)
@@ -357,6 +480,90 @@ def _to_float_array(seq):
 def _stack_dm_rows(seq):
     # seq: list of DM/arrays shaped (nx,1) -> 2D (T, nx)
     return np.vstack([np.array(v).reshape(1, -1) for v in seq])
+
+# def save_all_logs_as_csv(outdir: Path, log, log_ref, sol, user_input):
+#     outdir.mkdir(parents=True, exist_ok=True)
+#     names = list(log["u"].keys())
+#     Nsim  = len(log["u"][names[0]])
+#     nx    = int(sol["sys"]["vars"]["x"].shape[0])
+#     nu    = int(sol["sys"]["vars"]["u"].shape[0])
+#     p     = int(user_input["p"])
+#     t     = np.arange(Nsim) * (1.0 / p)
+#     tx    = np.arange(Nsim) * (1.0 / p)
+
+#     # --- Reference CSVs ---
+#     # x_ref (Nsim+1, nx)
+#     # Xr = _stack_dm_rows(log_ref["x_ref"])
+#     Xr = log_ref["x_ref"]
+#     pd.DataFrame(np.column_stack([tx, Xr]),
+#                  columns=["t_cycle"] + [f"x{i}" for i in range(nx)]
+#                  ).to_csv(outdir/"ref_x.csv", index=False)
+
+#     # u_ref (Nsim, nu
+#     Ur = log_ref["u_ref"]
+#     pd.DataFrame(np.column_stack([t, Ur]),
+#                  columns=["t_cycle"] + [f"u{i}" for i in range(nu)]
+#                  ).to_csv(outdir/"ref_u.csv", index=False)
+
+#     # l_ref / h_ref / power_ref (Nsim, 1) — some may be numpy already
+#     if "l_ref" in log_ref and len(log_ref["l_ref"]) == Nsim:
+#         pd.DataFrame({"t_cycle": t, "l_ref": [float(v) for v in log_ref["l_ref"]]}
+#                      ).to_csv(outdir/"ref_l.csv", index=False)
+#     if "h_ref" in log_ref and len(log_ref["h_ref"]) == Nsim:
+#         pd.DataFrame({"t_cycle": t, "h_ref": [float(v) for v in log_ref["h_ref"]]}
+#                      ).to_csv(outdir/"ref_h.csv", index=False)
+#     if "power_ref" in log_ref and len(log_ref["power_ref"]) >= Nsim:
+#         Pref = np.array(log_ref["power_ref"]).ravel()[:Nsim]
+#         pd.DataFrame({"t_cycle": t, "power_ref": Pref}
+#                      ).to_csv(outdir/"ref_power.csv", index=False)
+
+#     # --- Per-controller CSVs ---
+#         # --- Per-controller CSVs ---
+#     for nm in names:
+#         # x: list of DM -> (Nsim+1, nx)
+#         X_list = log["x"][nm]          # list of length Nsim+1
+#         X = np.vstack([np.array(xx).reshape(1, -1) for xx in X_list])
+
+#         pd.DataFrame(
+#             np.column_stack([tx, X]),
+#             columns=["t_cycle"] + [f"x{i}" for i in range(nx)]
+#         ).to_csv(outdir / f"{nm}_x.csv", index=False)
+
+#         # u: list of DM -> (Nsim, nu)
+#         U_list = log["u"][nm]          # list of length Nsim
+#         U = np.vstack([np.array(uu).reshape(1, -1) for uu in U_list])
+
+#         pd.DataFrame(
+#             np.column_stack([t, U]),
+#             columns=["t_cycle"] + [f"u{i}" for i in range(nu)]
+#         ).to_csv(outdir / f"{nm}_u.csv", index=False)
+
+#         # l, h, power: 1D -> (Nsim,)
+#         L = np.array([float(v) for v in log["l"][nm]]).ravel()
+#         H = np.array([float(v) for v in log["h"][nm]]).ravel()
+#         P = np.array([float(v) for v in log["power"][nm]]).ravel()
+
+#         pd.DataFrame(
+#             {"t_cycle": t, "l": L, "h": H, "power": P}
+#         ).to_csv(outdir / f"{nm}_lhp.csv", index=False)
+
+#         # lambda: could be scalar or vector per step
+#         lam_list = log.get("lambda", {}).get(nm, [])
+#         if lam_list:
+#             lam_list = [
+#                 np.atleast_1d(np.array(v).astype(float).ravel())
+#                 for v in lam_list
+#             ]
+#             maxlen = max(len(v) for v in lam_list)
+#             LAM = np.zeros((len(lam_list), maxlen))
+#             for i, v in enumerate(lam_list):
+#                 LAM[i, :len(v)] = v
+
+#             cols = ["t_cycle"] + [f"lambda{i}" for i in range(maxlen)]
+#             pd.DataFrame(
+#                 np.column_stack([t, LAM]),
+#                 columns=cols
+#             ).to_csv(outdir / f"{nm}_lambda.csv", index=False)
 
 def save_all_logs_as_csv(outdir: Path, log, log_ref, sol, user_input):
     outdir.mkdir(parents=True, exist_ok=True)
@@ -367,12 +574,14 @@ def save_all_logs_as_csv(outdir: Path, log, log_ref, sol, user_input):
     p     = int(user_input["p"])
     t     = np.arange(Nsim) * (1.0 / p)
     tx    = np.arange(Nsim+1) * (1.0 / p)
-
+    
     # --- Reference CSVs ---
     # x_ref (Nsim+1, nx)
     # Xr = _stack_dm_rows(log_ref["x_ref"])
     Xr = log_ref["x_ref"]
-    pd.DataFrame(np.column_stack([tx, Xr]),
+    Nref = Xr.shape[0]
+    tx_ref = np.arange(Nref) * (1.0 / p)
+    pd.DataFrame(np.column_stack([tx_ref, Xr]),
                  columns=["t_cycle"] + [f"x{i}" for i in range(nx)]
                  ).to_csv(outdir/"ref_x.csv", index=False)
 
@@ -442,6 +651,7 @@ def save_all_logs_as_csv(outdir: Path, log, log_ref, sol, user_input):
                 columns=cols
             ).to_csv(outdir / f"{nm}_lambda.csv", index=False)
             
+            
 def latexify():
     import matplotlib
     params_MPL_Tex = {
@@ -482,7 +692,7 @@ def plot_and_save(outdir: Path, log, sol, user_input, state_idx=0, state_idx_2=2
     p     = int(user_input["p"])
 
     t  = np.arange(Nsim)     * (1.0/p)
-    tx = np.arange(Nsim + 1) * (1.0/p)
+    tx = np.arange(Nsim) * (1.0/p)
 
     # Stage cost
     plt.figure()
@@ -496,13 +706,14 @@ def plot_and_save(outdir: Path, log, sol, user_input, state_idx=0, state_idx_2=2
     # State deviation at index
     plt.figure()
     for nm in names:
-        xs   = [float(log["x"][nm][k][state_idx]) for k in range(Nsim+1)]
-        xref = [float(sol["wsol"]["x", (k % p)][state_idx]) for k in range(Nsim+1)]
+        xs   = [float(log["x"][nm][k][state_idx]) for k in range(Nsim)]
+        xref = [float(sol["wsol"]["x", (k % p)][state_idx]) for k in range(Nsim)]
         plt.plot(tx, np.array(xs)-np.array(xref), label=nm,color=controller_colors[nm], linestyle=controller_linestyle[nm],linewidth=controller_linewidth[nm])
     plt.plot(tx, np.zeros_like(tx), "k--", linewidth=1)
-    plt.grid(True); plt.legend(); plt.title(fr"State deviation $x[{state_idx}] - x_{{\text{{ref}}}}[{state_idx}]$ [m]")
+    plt.grid(True); plt.legend();
+    # plt.title(fr"State deviation $x[{state_idx}] - x_{{\text{{ref}}}}[{state_idx}]$ [m]")
     plt.xlabel(r"time [cycles]")
-    plt.ylabel(fr"$x[{state_idx}] - x_{{\text{{ref}}}}[{state_idx}]$ [m]")
+    plt.ylabel(rf"$x[{state_idx}] - x_{{\mathrm{{ref}}}}[{state_idx}] [m]$")
     plt.savefig(outdir/"state_deviation.png", dpi=200, bbox_inches="tight")
     plt.savefig(outdir/"state_deviation.pdf", bbox_inches="tight")
     plt.close()
@@ -510,13 +721,14 @@ def plot_and_save(outdir: Path, log, sol, user_input, state_idx=0, state_idx_2=2
     # State deviation at index
     plt.figure()
     for nm in names:
-        xs   = [float(log["x"][nm][k][state_idx_2]) for k in range(Nsim+1)]
-        xref = [float(sol["wsol"]["x", (k % p)][state_idx_2]) for k in range(Nsim+1)]
+        xs   = [float(log["x"][nm][k][state_idx_2]) for k in range(Nsim)]
+        xref = [float(sol["wsol"]["x", (k % p)][state_idx_2]) for k in range(Nsim)]
         plt.plot(tx, np.array(xs)-np.array(xref), label=nm, color=controller_colors[nm], linestyle=controller_linestyle[nm],linewidth=controller_linewidth[nm])
     plt.plot(tx, np.zeros_like(tx), "k--", linewidth=1)
-    plt.grid(True); plt.legend(); plt.title(fr"State deviation $x[{state_idx_2}] - x_{{\text{{ref}}}}[{state_idx_2}]$ [m]")
+    plt.grid(True); plt.legend()
+    # ; plt.title(fr"State deviation $x[{state_idx_2}] - x_{{\text{{ref}}}}[{state_idx_2}]$ [m]")
     plt.xlabel(r"time [cycles]")
-    plt.ylabel(fr"$x[{state_idx_2}] - x_{{\text{{ref}}}}[{state_idx_2}]$ [m]")
+    plt.ylabel(rf"$x[{state_idx_2}] - x_{{\mathrm{{ref}}}}[{state_idx_2}] [m]$")
     plt.savefig(outdir/"state_deviation_2.png", dpi=200, bbox_inches="tight")
     plt.savefig(outdir/"state_deviation_2.pdf", bbox_inches="tight")
     plt.close()
@@ -561,28 +773,37 @@ from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 (needed for 3D projection)
 X_IDX, Y_IDX, Z_IDX = 0, 1, 2
 
 
-def plot_trajectory_all(outdir: Path, log, log_ref, sol, user_input,
+def plot_trajectory_all(outdir: Path, log, log_ref, sol, user_input, Nsim,
                         x_idx=0, y_idx=1, z_idx=2):
     """Single 3D figure: reference + all controllers."""
     names = list(log["u"].keys())
-    Nsim  = len(log["u"][names[0]])
+    # Nsim  = len(log["u"][names[0]])
     p     = int(user_input["p"])
 
     # Reference (Nsim+1 points)
-    Xr = [float(log_ref["x_ref"][k][x_idx] * scaling_x[x_idx]) for k in range(Nsim+1)]
-    Yr = [float(log_ref["x_ref"][k][y_idx] * scaling_x[y_idx]) for k in range(Nsim+1)]
-    Zr = [float(log_ref["x_ref"][k][z_idx] * scaling_x[z_idx]) for k in range(Nsim+1)]
+    Xr = [float(log_ref["x_ref"][k][x_idx] * scaling_x[x_idx]) for k in range(Nsim)]
+    Yr = [float(log_ref["x_ref"][k][y_idx] * scaling_x[y_idx]) for k in range(Nsim)]
+    Zr = [float(log_ref["x_ref"][k][z_idx] * scaling_x[z_idx]) for k in range(Nsim)]
 
     fig = plt.figure()
     ax  = fig.add_subplot(111, projection='3d')
     ax.scatter(0, 0, 0, color='black', marker='o', s=10 ) #label='origin'
     ax.plot(Xr, Yr, Zr, label="Reference",color=COLOR_OF_REFERENCE, linestyle=LINESTYLE_OF_REFERENCE, linewidth=LINEWIDTH_OF_REFERENCE)
+    ax.scatter(Xr, Yr, Zr, color=COLOR_OF_REFERENCE, marker='o', s=0.5 )
+    for i in range(0, len(Xr),2):
+        ax.text(
+            Xr[i], Yr[i], Zr[i],
+            f"{i}",                 # or f"{i//2}" if you want 0,1,2,... instead of 0,2,4,...
+            fontsize=6,
+            ha='center',
+            va='center'
+        )
     draw_tethers_3d(ax, Xr, Yr, Zr, x_g=0.0, y_g=0.0, z_g=0.0, step=2,color_line="gray")
     
     for nm in names:
-        Xc = [float(log["x"][nm][k][x_idx] * scaling_x[x_idx]) for k in range(Nsim+1)]
-        Yc = [float(log["x"][nm][k][y_idx] * scaling_x[y_idx]) for k in range(Nsim+1)]
-        Zc = [float(log["x"][nm][k][z_idx] * scaling_x[z_idx]) for k in range(Nsim+1)]
+        Xc = [float(log["x"][nm][k][x_idx] * scaling_x[x_idx]) for k in range(Nsim)]
+        Yc = [float(log["x"][nm][k][y_idx] * scaling_x[y_idx]) for k in range(Nsim)]
+        Zc = [float(log["x"][nm][k][z_idx] * scaling_x[z_idx]) for k in range(Nsim)]
         ax.plot(Xc, Yc, Zc, label=nm, alpha=0.9,color=controller_colors[nm], linestyle=controller_linestyle[nm],linewidth=controller_linewidth[nm])
 
     ax.set_title("3D Trajectory: controllers vs reference")
@@ -599,21 +820,21 @@ def plot_trajectory_all(outdir: Path, log, log_ref, sol, user_input,
     plt.savefig(outdir/"trajectory_all_3d.pdf", bbox_inches="tight")
     plt.close()
 
-def plot_trajectory_per_controller(outdir: Path, log, log_ref, sol, user_input,
+def plot_trajectory_per_controller(outdir: Path, log, log_ref, sol, user_input, Nsim,
                                    x_idx=0, y_idx=1, z_idx=2):
     """One 3D figure per controller with the reference trajectory."""
     names = list(log["u"].keys())
-    Nsim  = len(log["u"][names[0]])
+    # Nsim  = len(log["u"][names[0]])
 
     # Reference
-    Xr = [float(log_ref["x_ref"][k][x_idx] * scaling_x[x_idx]) for k in range(Nsim+1)]
-    Yr = [float(log_ref["x_ref"][k][y_idx] * scaling_x[y_idx]) for k in range(Nsim+1)]
-    Zr = [float(log_ref["x_ref"][k][z_idx] * scaling_x[z_idx]) for k in range(Nsim+1)]
+    Xr = [float(log_ref["x_ref"][k][x_idx] * scaling_x[x_idx]) for k in range(Nsim)]
+    Yr = [float(log_ref["x_ref"][k][y_idx] * scaling_x[y_idx]) for k in range(Nsim)]
+    Zr = [float(log_ref["x_ref"][k][z_idx] * scaling_x[z_idx]) for k in range(Nsim)]
 
     for nm in names:
-        Xc = [float(log["x"][nm][k][x_idx] * scaling_x[x_idx]) for k in range(Nsim+1)]
-        Yc = [float(log["x"][nm][k][y_idx] * scaling_x[y_idx]) for k in range(Nsim+1)]
-        Zc = [float(log["x"][nm][k][z_idx] * scaling_x[z_idx]) for k in range(Nsim+1)]
+        Xc = [float(log["x"][nm][k][x_idx] * scaling_x[x_idx]) for k in range(Nsim)]
+        Yc = [float(log["x"][nm][k][y_idx] * scaling_x[y_idx]) for k in range(Nsim)]
+        Zc = [float(log["x"][nm][k][z_idx] * scaling_x[z_idx]) for k in range(Nsim)]
 
         fig = plt.figure()
         ax  = fig.add_subplot(111, projection='3d')
@@ -683,19 +904,21 @@ def main():
 
         # Load pickles and build controllers/system
         user_input, sol = load_pickles(user_pkl, conv_pkl)
+        
         ctrls, mpc_sys = build_controllers(user_input, sol, NMPC)
         F = mpc_sys["f"]
-
+        # Output folder for this combo
+        outdir = OUT_ROOT / f"T_{t}_N_{n}_beta_{beta}_accreg_{accrg}_NMPC_{NSIM}_noise_config{CONFIG}_DEBUG"
+        ensure_dir(outdir)
         # Run closed loop with disturbances
         log, log_ref = closed_loop_with_noise(
             ctrls, F, user_input, sol,
-            Nsim=NSIM
+            Nsim=n, outdir=outdir
+            # Nsim=NSIM
             # , wstd=WSTD, vstd=VSTD, seed=SEED
         )
 
-        # Output folder for this combo
-        outdir = OUT_ROOT / f"T_{t}_N_{n}_beta_{beta}_accreg_{accrg}_NMPC_{NSIM}_noise_config{CONFIG}"
-        ensure_dir(outdir)
+        
 
         # Save raw log
         with open(outdir / "log.pkl", "wb") as f:
@@ -718,20 +941,12 @@ def main():
         latexify()
         plot_and_save(outdir, log, sol, user_input,  state_idx=STATE_IDX_TO_PLOT, state_idx_2=STATE_IDX_TO_PLOT_2)
         plot_power_tracking(outdir, log, log_ref, user_input)
-        plot_trajectory_all(outdir, log, log_ref, sol, user_input,X_IDX, Y_IDX, Z_IDX)
-        plot_trajectory_per_controller(outdir, log, log_ref, sol, user_input, X_IDX, Y_IDX, Z_IDX)
+        plot_trajectory_all(outdir, log, log_ref, sol, user_input,X_IDX, Y_IDX, Z_IDX,Nsim=n)
+        plot_trajectory_per_controller(outdir, log, log_ref, sol, user_input, X_IDX, Y_IDX, Z_IDX,Nsim=n)
 
         save_all_logs_as_csv(outdir, log, log_ref, sol, user_input)
-        # README metadata
-        # meta = {
-        #     "row_index": int(ridx),
-        #     "t": t, "n": n, "beta": beta, "acc_reg": accrg,
-        #     "Nsim": NSIM, "Nmpc": NMPC, "wstd": WSTD, "vstd": VSTD, "seed": SEED,
-        #     "user_pickle": str(user_pkl), "convexified_pickle": str(conv_pkl),
-        #     "notes": "Closed-loop with optional disturbances; non-interactive plots saved."
-        # }
-        # with open(outdir / "README.txt", "w") as f:
-        #     f.write(json.dumps(meta, indent=2))
+        save_controller_ipopt_stats_csvs(outdir, ctrls, log)
+        
 
         print(f"✔ Row {ridx}: saved -> {outdir}")
 

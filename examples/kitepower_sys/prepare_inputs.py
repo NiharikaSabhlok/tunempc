@@ -144,6 +144,7 @@ def generate_kite_model_and_orbit(windings, intervals_per_winding, time_per_wind
     options['user_options.wind.u_ref'] = 6.
 
     # coefficient boundaries
+    # Here we put bounds on u_s and u_d in the state vector and u_s_dot and u_d_dot
     options['model.system_bounds.x.coeff'] =  [np.array([-0.6, 0.]), np.array([0.6, 1.])]
     options['model.system_bounds.u.dcoeff'] =  [np.array([-.08, -1]), np.array([.08, 1])]
 
@@ -156,6 +157,7 @@ def generate_kite_model_and_orbit(windings, intervals_per_winding, time_per_wind
     options['nlp.collocation.u_param'] = 'zoh'
     options['user_options.trajectory.lift_mode.phase_fix'] = 'simple' # 'simple' # 'single_reelout'
     options['solver.linear_solver'] = 'mumps'  # if HSL is installed, otherwise 'mumps'
+    #implemeting bounds on the acceleration of the tether 
     options['model.system_bounds.x.ddl_t'] = [-2.0, 2.0]
     options['model.system_bounds.theta.t_f'] = [0, (windings*time_per_winding)] ## +2*(time_per_winding/intervals_per_winding)
     options['nlp.phase_fix_reelout'] = 0.7

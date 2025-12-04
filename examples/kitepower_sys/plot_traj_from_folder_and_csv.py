@@ -41,10 +41,25 @@ def find_match(beta,acc_reg,T):
     print(matched_file if matched_file else "File not found")
     return matched_file
 
+def latexify():
+    import matplotlib
+    params_MPL_Tex = {
+                'text.usetex': True,
+                'font.family': 'serif',
+                # Use 10pt font in plots, to match 10pt font in document
+                "axes.labelsize": 10,
+                "font.size": 10,
+                # Make the legend/label fonts a little smaller
+                "legend.fontsize": 8,
+                "xtick.labelsize": 8,
+                "ytick.labelsize": 8
+              }
+    matplotlib.rcParams.update(params_MPL_Tex)
+
 
 
 master = pd.read_csv(MASTER_CSV)
-
+latexify()
 for _, r in master.iterrows():
     if r["beta"]==0.5:
         beta = r["beta"]
@@ -91,7 +106,7 @@ fig = plt.figure(figsize=(12, 8))
 ax = fig.add_subplot(111, projection='3d')
 
 # optional reference point
-ax.scatter(0, 0, 0, color='red', marker='o', s=40, label='origin')
+ax.scatter(0, 0, 0, color='red', marker='o', s=40, label='Ground Station')
 
 legend_handles, legend_labels = [], []
 
@@ -124,10 +139,10 @@ for i, param in enumerate(final_param_list):
     time_iterated=t
 
 # axes & aesthetics
-ax.set_xlabel("x [m]")
-ax.set_ylabel("y [m]")
-ax.set_zlabel("z [m]")
-ax.set_title("3D Trajectories by (β, acc_reg, t)")
+ax.set_xlabel(r"x [m]")
+ax.set_ylabel(r"y [m]")
+ax.set_zlabel(r"z [m]")
+ax.set_title(r"3D Trajectories by (β, acc_reg, t)")
 ax.grid(True, which='both', alpha=0.25)
 
 # view angle

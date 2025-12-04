@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Read the CSV file
-df = pd.read_csv('F:/Thesis/Parameter_sweep_analysis/Analysis_results/data_folder_to_generate_graphs_for_param_analysis_chapter/beta_and_acc_reg_refined/BETA_AND_ACC_REGULARIZATION_SWEEP_WO_WARMSTARTING_RANGE_wide.csv')  # Replace with your CSV file path
+df = pd.read_csv('F:/Thesis/Parameter_sweep_analysis/Analysis_results/data_folder_to_generate_graphs_for_param_analysis_chapter/beta_and_acc_reg_refined/BETA_AND_ACC_REGULARIZATION_SWEEP_WO_WARMSTARTING_RANGE_refined.csv')  # Replace with your CSV file path
 
 fixed_column = 'beta'#'acc_reg'
 plotting_column = 'acc_reg'#'beta'

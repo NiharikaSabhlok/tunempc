@@ -100,6 +100,7 @@ def closed_loop_sim(controllers, cost, h, F, x0, N, flag = 'tunempc'):
 
             # simulate
             log['x'][name].append(F(x0 = log['x'][name][-1], p = log['u'][name][-1])['xf'])
+            
 
     return log
 

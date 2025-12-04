@@ -129,7 +129,7 @@ if plot_type == 'stacked':
     ax.set_xlabel("x [m]")
     ax.set_ylabel("y [m]")
     ax.set_zlabel("z [m]")
-    ax.set_title("3D Trajectories by (β, acc_reg, t)")
+    # ax.set_title("3D Trajectories by (β, acc_reg, t)")
     ax.grid(True, which='both', alpha=0.25)
 
     # view angle

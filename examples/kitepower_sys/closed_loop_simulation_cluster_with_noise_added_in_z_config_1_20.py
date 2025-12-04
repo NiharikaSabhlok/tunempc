@@ -59,6 +59,7 @@ b_add_noise = True
 CONFIG=1
 indices_for_adding_noise=[]
 array_of_percentage_of_traj = [0.4,0.6]
+array_of_percentage_of_traj_np = np.array(array_of_percentage_of_traj, dtype=float)
 noise_to_be_added=[0.5,0.8]
 dz=5
 DISTURB_VELOCITY = False
@@ -206,7 +207,8 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
     nu = int(sol["sys"]["vars"]["u"].shape[0])
     p  = int(user_input["p"])
     
-    indices_for_adding_noise = (p * array_of_percentage_of_traj).astype(int)
+    # indices_for_adding_noise = (p * array_of_percentage_of_traj).astype(int)
+    indices_for_adding_noise = set((p * array_of_percentage_of_traj_np).astype(int).tolist())
     
     l_opt, h_opt, x_ref, u_ref, z_ref, power_ref, lt_ref, dlt_ref = [], [], [], [], [], [],[],[]
     log_ref = {"x_ref": [], "u_ref": [], "l_ref": [], "h_ref": [], "power_ref": [], "avg_power":[]}
@@ -279,7 +281,8 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
             Logger.logger.info(10*' '+f'Evaluating Step {k} of Controller {name}.')
             Logger.logger.info(10*'=')
             # MPC action
-            u, ipopt_info = ctrl.step(x_meas)                          # online control from Pmpc. :contentReference[oaicite:7]{index=7}
+            # ipopt_iteration, ipopt_twall, ipopt_status, u = ctrl.step(x_meas)      
+            u = ctrl.step(x_meas)
 
             # stage cost & constraint at *true* state (pre-process-noise)
             lk = float(user_input["l"](x_true, u).full()[0,0])
@@ -310,10 +313,13 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
             x_true = x_next
             log["x"][name].append(x_true)
             log["avg_power"][name]=np.mean(np.array(log["power"][name]))
-            log["ipopt_iterations"][name].append(ipopt_info['iter_count'])
-            log["ipopt_twall"][name].append(ipopt_info['t_wall_total'])
-            log["ipopt_status"][name].append(ipopt_info['return_status'])
             
+            
+        controller_log = ctrl.log
+        print(controller_log)
+        log["ipopt_iterations"][name]=ctrl.log["ipopt_iter"]
+        log["ipopt_twall"][name]=ctrl.log["ipopt_cpu"]
+        log["ipopt_status"][name]=ctrl.log["ipopt_status"]
             
         ctrl.reset()
         indices_for_adding_noise.clear()
@@ -362,30 +368,14 @@ def save_controller_ipopt_stats_csvs(outdir: Path, ctrls, log):
     """
     # outdir.mkdir(parents=True, exist_ok=True)
 
-    cols = []      # list of 2D arrays (N x 1) to hstack
-    headers = []   # list of column names
-
+    data = {}
     for name in ctrls.keys():
-        iter_arr   = np.array(log["ipopt_iterations"][name]).reshape(-1, 1)
-        twall_arr  = np.array(log["ipopt_twall"][name]).reshape(-1, 1)
-        status_arr = np.array(log["ipopt_status"][name]).reshape(-1, 1)
+        data[f"iter_count_{name}"]     = log["ipopt_iterations"][name]
+        data[f"t_wall_total_{name}"]   = log["ipopt_twall"][name]
+        data[f"return_status_{name}"]  = log["ipopt_status"][name]
 
-        cols.extend([iter_arr, twall_arr, status_arr])
-        headers.extend([
-            f"iter_count_{name}",
-            f"t_wall_total_{name}",
-            f"return_status_{name}"
-        ])
-
-    ipopt_mat = np.hstack(cols)
-    header_str = ",".join(headers)
-
-    np.savetxt(
-        outdir / "ipopt_stats.csv",
-        ipopt_mat,
-        delimiter=",",
-        header=header_str
-    )
+    df = pd.DataFrame(data)
+    df.to_csv(outdir / "ipopt_stats.csv", index=False)
     
     
 def _to_float_array(seq):
@@ -537,9 +527,10 @@ def plot_and_save(outdir: Path, log, sol, user_input, state_idx=0, state_idx_2=2
         xref = [float(sol["wsol"]["x", (k % p)][state_idx]) for k in range(Nsim+1)]
         plt.plot(tx, np.array(xs)-np.array(xref), label=nm,color=controller_colors[nm], linestyle=controller_linestyle[nm],linewidth=controller_linewidth[nm])
     plt.plot(tx, np.zeros_like(tx), "k--", linewidth=1)
-    plt.grid(True); plt.legend(); plt.title(fr"State deviation $x[{state_idx}] - x_{{\text{{ref}}}}[{state_idx}]$ [m]")
+    plt.grid(True); plt.legend()
+    # plt.title(fr"State deviation $x[{state_idx}] - x_{{\text{{ref}}}}[{state_idx}]$ [m]")
     plt.xlabel(r"time [cycles]")
-    plt.ylabel(fr"$x[{state_idx}] - x_{{\text{{ref}}}}[{state_idx}]$ [m]")
+    plt.ylabel(rf"$x[{state_idx}] - x_{{\mathrm{{ref}}}}[{state_idx}] [m]$")
     plt.savefig(outdir/"state_deviation.png", dpi=200, bbox_inches="tight")
     plt.savefig(outdir/"state_deviation.pdf", bbox_inches="tight")
     plt.close()
@@ -551,9 +542,10 @@ def plot_and_save(outdir: Path, log, sol, user_input, state_idx=0, state_idx_2=2
         xref = [float(sol["wsol"]["x", (k % p)][state_idx_2]) for k in range(Nsim+1)]
         plt.plot(tx, np.array(xs)-np.array(xref), label=nm, color=controller_colors[nm], linestyle=controller_linestyle[nm],linewidth=controller_linewidth[nm])
     plt.plot(tx, np.zeros_like(tx), "k--", linewidth=1)
-    plt.grid(True); plt.legend(); plt.title(fr"State deviation $x[{state_idx_2}] - x_{{\text{{ref}}}}[{state_idx_2}]$ [m]")
+    plt.grid(True); plt.legend() 
+    # plt.title(fr"State deviation $x[{state_idx_2}] - x_{{\text{{ref}}}}[{state_idx_2}]$ [m]")
     plt.xlabel(r"time [cycles]")
-    plt.ylabel(fr"$x[{state_idx_2}] - x_{{\text{{ref}}}}[{state_idx_2}]$ [m]")
+    plt.ylabel(rf"$x[{state_idx_2}] - x_{{\mathrm{{ref}}}}[{state_idx_2}] [m]$")
     plt.savefig(outdir/"state_deviation_2.png", dpi=200, bbox_inches="tight")
     plt.savefig(outdir/"state_deviation_2.pdf", bbox_inches="tight")
     plt.close()
@@ -726,7 +718,8 @@ def main():
         # Run closed loop with disturbances
         log, log_ref = closed_loop_with_noise(
             ctrls, F, user_input, sol,
-            Nsim=NSIM
+            Nsim=n
+            # Nsim=NSIM
             # , wstd=WSTD, vstd=VSTD, seed=SEED
         )
 
@@ -760,16 +753,7 @@ def main():
 
         save_all_logs_as_csv(outdir, log, log_ref, sol, user_input)
         save_controller_ipopt_stats_csvs(outdir, ctrls, log)
-        # README metadata
-        # meta = {
-        #     "row_index": int(ridx),
-        #     "t": t, "n": n, "beta": beta, "acc_reg": accrg,
-        #     "Nsim": NSIM, "Nmpc": NMPC, "wstd": WSTD, "vstd": VSTD, "seed": SEED,
-        #     "user_pickle": str(user_pkl), "convexified_pickle": str(conv_pkl),
-        #     "notes": "Closed-loop with optional disturbances; non-interactive plots saved."
-        # }
-        # with open(outdir / "README.txt", "w") as f:
-        #     f.write(json.dumps(meta, indent=2))
+        
 
         print(f"✔ Row {ridx}: saved -> {outdir}")
 

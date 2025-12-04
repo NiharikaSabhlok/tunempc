@@ -152,7 +152,7 @@ class Pmpc(object):
         opts = {
             'hessian_approximation': 'exact',
             'ipopt_presolve': False,
-            'max_iter': 2000,
+            'max_iter': 500,
             'p_operator': ca.Function('p_operator',[self.__vars['x']],[self.__vars['x']]),
             'slack_flag': 'none'
         }
@@ -347,6 +347,7 @@ class Pmpc(object):
         if self.__options['ipopt_presolve']:
             # opts = {'ipopt':{'linear_solver':'ma57','print_level':5},'expand':False}
             opts = {'ipopt':{'linear_solver':'mumps','print_level':5},'expand':False}
+            opts['ipopt']['max_iter'] = 300
             if Logger.logger.getEffectiveLevel() > 0:
                 opts['ipopt']['print_level'] = 5
                 opts['print_time'] = 1
@@ -427,8 +428,11 @@ class Pmpc(object):
             # self.__g(sol['lam_g'])
             self.__g(ipopt_sol['lam_g'])
             )
-
-        return self.__w_sol['u',0], ipopt_info
+        u_0 = self.__w_sol['u',0]
+        
+        # return ipopt_info['iter_count'], ipopt_info['t_wall_total'], ipopt_info['return_status'], u_0
+        return self.__w_sol['u',0]
+        # return self.__w_sol['u']
 
     def step_acados(self, x0):
 
@@ -828,6 +832,7 @@ class Pmpc(object):
         self.__log['ipopt_cpu'].append(info['t_wall_total'])
         self.__log['ipopt_iter'].append(info['iter_count'])
         self.__log['ipopt_status'].append(info['return_status'])
+        print("extracted IPOPT stats")
         # self.__log['sol_x'].append(info['x'])
         # self.__log['lam_g'].append(info['lam_g'])
         # self.__log['ipopt_objective'].append(info['objective'])

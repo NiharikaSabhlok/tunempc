@@ -59,6 +59,7 @@ b_add_noise = True
 CONFIG=1
 indices_for_adding_noise=[]
 array_of_percentage_of_traj = [0.4,0.6]
+array_of_percentage_of_traj_np = np.array(array_of_percentage_of_traj, dtype=float)
 noise_to_be_added=[0.5,0.8]
 dz=5
 DISTURB_VELOCITY = False
@@ -206,7 +207,8 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
     nu = int(sol["sys"]["vars"]["u"].shape[0])
     p  = int(user_input["p"])
     
-    indices_for_adding_noise = (p * array_of_percentage_of_traj).astype(int)
+    # indices_for_adding_noise = (p * array_of_percentage_of_traj).astype(int)
+    indices_for_adding_noise = set((p * array_of_percentage_of_traj_np).astype(int).tolist())
     
     l_opt, h_opt, x_ref, u_ref, z_ref, power_ref, lt_ref, dlt_ref = [], [], [], [], [], [],[],[]
     log_ref = {"x_ref": [], "u_ref": [], "l_ref": [], "h_ref": [], "power_ref": [], "avg_power":[]}
@@ -245,7 +247,7 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
     v_std = (np.ones(nx)*gauss_v_std).reshape(nx,1) if np.isscalar(gauss_v_std) else np.array(gauss_v_std).reshape(nx,1)
 
     x0 = sol["wsol"]["x",0]
-    log = {key:{name:[] for name in ctrls.keys()} for key in ["x","u","l","h","power","lambda","avg_power"]}
+    log = {key:{name:[] for name in ctrls.keys()} for key in ["x","u","l","h","power","lambda","avg_power","ipopt_iterations","ipopt_twall","ipopt_status"]}
     
     power_params = {key:{name:[] for name in ctrls.keys()} for key in ["z_k","lt_k","dl_t_k","power"]}
 
@@ -279,7 +281,8 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
             Logger.logger.info(10*' '+f'Evaluating Step {k} of Controller {name}.')
             Logger.logger.info(10*'=')
             # MPC action
-            u = ctrl.step(x_meas)                          # online control from Pmpc. :contentReference[oaicite:7]{index=7}
+            # ipopt_iteration, ipopt_twall, ipopt_status, u = ctrl.step(x_meas)      
+            u = ctrl.step(x_meas)
 
             # stage cost & constraint at *true* state (pre-process-noise)
             lk = float(user_input["l"](x_true, u).full()[0,0])
@@ -310,7 +313,13 @@ def closed_loop_with_noise(ctrls, F, user_input, sol, Nsim, gauss_w_std=0.0, gau
             x_true = x_next
             log["x"][name].append(x_true)
             log["avg_power"][name]=np.mean(np.array(log["power"][name]))
-
+            
+            
+        controller_log = ctrl.log
+        log["ipopt_iterations"][name]=ctrl.log["ipopt_iter"]
+        log["ipopt_twall"][name]=ctrl.log["ipopt_cpu"]
+        log["ipopt_status"][name]=ctrl.log["ipopt_status"]
+            
         ctrl.reset()
         indices_for_adding_noise.clear()
     return log, log_ref
@@ -344,11 +353,28 @@ def save_controller_csvs(outdir: Path, name: str, log, sol, user_input):
     # l/h: (N,)
     L = np.array(log["l"][name]).reshape(-1,1)
     H = np.array(log["h"][name]).reshape(-1,1)
-
+    
+    
     np.savetxt(outdir/f"{name}_traj_x.csv", X, delimiter=",")
     np.savetxt(outdir/f"{name}_traj_u.csv", U, delimiter=",")
     np.savetxt(outdir/f"{name}_stage_cost.csv", L, delimiter=",")
     np.savetxt(outdir/f"{name}_constraint.csv", H, delimiter=",")
+    
+def save_controller_ipopt_stats_csvs(outdir: Path, ctrls, log):
+    """Save IPOPT stats for all controllers into a single CSV.
+
+    Columns: iter_count_{name}, t_wall_total_{name}, return_status_{name}
+    """
+    # outdir.mkdir(parents=True, exist_ok=True)
+
+    data = {}
+    for name in ctrls.keys():
+        data[f"iter_count_{name}"]     = log["ipopt_iterations"][name]
+        data[f"t_wall_total_{name}"]   = log["ipopt_twall"][name]
+        data[f"return_status_{name}"]  = log["ipopt_status"][name]
+
+    df = pd.DataFrame(data)
+    df.to_csv(outdir / "ipopt_stats.csv", index=False)
     
     
 def _to_float_array(seq):
@@ -357,6 +383,90 @@ def _to_float_array(seq):
 def _stack_dm_rows(seq):
     # seq: list of DM/arrays shaped (nx,1) -> 2D (T, nx)
     return np.vstack([np.array(v).reshape(1, -1) for v in seq])
+
+# def save_all_logs_as_csv(outdir: Path, log, log_ref, sol, user_input):
+#     outdir.mkdir(parents=True, exist_ok=True)
+#     names = list(log["u"].keys())
+#     Nsim  = len(log["u"][names[0]])
+#     nx    = int(sol["sys"]["vars"]["x"].shape[0])
+#     nu    = int(sol["sys"]["vars"]["u"].shape[0])
+#     p     = int(user_input["p"])
+#     t     = np.arange(Nsim) * (1.0 / p)
+#     tx    = np.arange(Nsim+1) * (1.0 / p)
+
+#     # --- Reference CSVs ---
+#     # x_ref (Nsim+1, nx)
+#     # Xr = _stack_dm_rows(log_ref["x_ref"])
+#     Xr = log_ref["x_ref"]
+#     pd.DataFrame(np.column_stack([tx, Xr]),
+#                  columns=["t_cycle"] + [f"x{i}" for i in range(nx)]
+#                  ).to_csv(outdir/"ref_x.csv", index=False)
+
+#     # u_ref (Nsim, nu
+#     Ur = log_ref["u_ref"]
+#     pd.DataFrame(np.column_stack([t, Ur]),
+#                  columns=["t_cycle"] + [f"u{i}" for i in range(nu)]
+#                  ).to_csv(outdir/"ref_u.csv", index=False)
+
+#     # l_ref / h_ref / power_ref (Nsim, 1) — some may be numpy already
+#     if "l_ref" in log_ref and len(log_ref["l_ref"]) == Nsim:
+#         pd.DataFrame({"t_cycle": t, "l_ref": [float(v) for v in log_ref["l_ref"]]}
+#                      ).to_csv(outdir/"ref_l.csv", index=False)
+#     if "h_ref" in log_ref and len(log_ref["h_ref"]) == Nsim:
+#         pd.DataFrame({"t_cycle": t, "h_ref": [float(v) for v in log_ref["h_ref"]]}
+#                      ).to_csv(outdir/"ref_h.csv", index=False)
+#     if "power_ref" in log_ref and len(log_ref["power_ref"]) >= Nsim:
+#         Pref = np.array(log_ref["power_ref"]).ravel()[:Nsim]
+#         pd.DataFrame({"t_cycle": t, "power_ref": Pref}
+#                      ).to_csv(outdir/"ref_power.csv", index=False)
+
+#     # --- Per-controller CSVs ---
+#         # --- Per-controller CSVs ---
+#     for nm in names:
+#         # x: list of DM -> (Nsim+1, nx)
+#         X_list = log["x"][nm]          # list of length Nsim+1
+#         X = np.vstack([np.array(xx).reshape(1, -1) for xx in X_list])
+
+#         pd.DataFrame(
+#             np.column_stack([tx, X]),
+#             columns=["t_cycle"] + [f"x{i}" for i in range(nx)]
+#         ).to_csv(outdir / f"{nm}_x.csv", index=False)
+
+#         # u: list of DM -> (Nsim, nu)
+#         U_list = log["u"][nm]          # list of length Nsim
+#         U = np.vstack([np.array(uu).reshape(1, -1) for uu in U_list])
+
+#         pd.DataFrame(
+#             np.column_stack([t, U]),
+#             columns=["t_cycle"] + [f"u{i}" for i in range(nu)]
+#         ).to_csv(outdir / f"{nm}_u.csv", index=False)
+
+#         # l, h, power: 1D -> (Nsim,)
+#         L = np.array([float(v) for v in log["l"][nm]]).ravel()
+#         H = np.array([float(v) for v in log["h"][nm]]).ravel()
+#         P = np.array([float(v) for v in log["power"][nm]]).ravel()
+
+#         pd.DataFrame(
+#             {"t_cycle": t, "l": L, "h": H, "power": P}
+#         ).to_csv(outdir / f"{nm}_lhp.csv", index=False)
+
+#         # lambda: could be scalar or vector per step
+#         lam_list = log.get("lambda", {}).get(nm, [])
+#         if lam_list:
+#             lam_list = [
+#                 np.atleast_1d(np.array(v).astype(float).ravel())
+#                 for v in lam_list
+#             ]
+#             maxlen = max(len(v) for v in lam_list)
+#             LAM = np.zeros((len(lam_list), maxlen))
+#             for i, v in enumerate(lam_list):
+#                 LAM[i, :len(v)] = v
+
+#             cols = ["t_cycle"] + [f"lambda{i}" for i in range(maxlen)]
+#             pd.DataFrame(
+#                 np.column_stack([t, LAM]),
+#                 columns=cols
+#             ).to_csv(outdir / f"{nm}_lambda.csv", index=False)
 
 def save_all_logs_as_csv(outdir: Path, log, log_ref, sol, user_input):
     outdir.mkdir(parents=True, exist_ok=True)
@@ -442,6 +552,7 @@ def save_all_logs_as_csv(outdir: Path, log, log_ref, sol, user_input):
                 columns=cols
             ).to_csv(outdir / f"{nm}_lambda.csv", index=False)
             
+            
 def latexify():
     import matplotlib
     params_MPL_Tex = {
@@ -500,9 +611,10 @@ def plot_and_save(outdir: Path, log, sol, user_input, state_idx=0, state_idx_2=2
         xref = [float(sol["wsol"]["x", (k % p)][state_idx]) for k in range(Nsim+1)]
         plt.plot(tx, np.array(xs)-np.array(xref), label=nm,color=controller_colors[nm], linestyle=controller_linestyle[nm],linewidth=controller_linewidth[nm])
     plt.plot(tx, np.zeros_like(tx), "k--", linewidth=1)
-    plt.grid(True); plt.legend(); plt.title(fr"State deviation $x[{state_idx}] - x_{{\text{{ref}}}}[{state_idx}]$ [m]")
+    plt.grid(True); plt.legend()
+    # plt.title(fr"State deviation $x[{state_idx}] - x_{{\text{{ref}}}}[{state_idx}]$ [m]")
     plt.xlabel(r"time [cycles]")
-    plt.ylabel(fr"$x[{state_idx}] - x_{{\text{{ref}}}}[{state_idx}]$ [m]")
+    plt.ylabel(rf"$x[{state_idx}] - x_{{\mathrm{{ref}}}}[{state_idx}] [m]$")
     plt.savefig(outdir/"state_deviation.png", dpi=200, bbox_inches="tight")
     plt.savefig(outdir/"state_deviation.pdf", bbox_inches="tight")
     plt.close()
@@ -514,9 +626,10 @@ def plot_and_save(outdir: Path, log, sol, user_input, state_idx=0, state_idx_2=2
         xref = [float(sol["wsol"]["x", (k % p)][state_idx_2]) for k in range(Nsim+1)]
         plt.plot(tx, np.array(xs)-np.array(xref), label=nm, color=controller_colors[nm], linestyle=controller_linestyle[nm],linewidth=controller_linewidth[nm])
     plt.plot(tx, np.zeros_like(tx), "k--", linewidth=1)
-    plt.grid(True); plt.legend(); plt.title(fr"State deviation $x[{state_idx_2}] - x_{{\text{{ref}}}}[{state_idx_2}]$ [m]")
+    plt.grid(True); plt.legend()
+    # plt.title(fr"State deviation $x[{state_idx_2}] - x_{{\text{{ref}}}}[{state_idx_2}]$ [m]")
     plt.xlabel(r"time [cycles]")
-    plt.ylabel(fr"$x[{state_idx_2}] - x_{{\text{{ref}}}}[{state_idx_2}]$ [m]")
+    plt.ylabel(rf"$x[{state_idx_2}] - x_{{\mathrm{{ref}}}}[{state_idx_2}] [m]$")
     plt.savefig(outdir/"state_deviation_2.png", dpi=200, bbox_inches="tight")
     plt.savefig(outdir/"state_deviation_2.pdf", bbox_inches="tight")
     plt.close()
@@ -689,7 +802,8 @@ def main():
         # Run closed loop with disturbances
         log, log_ref = closed_loop_with_noise(
             ctrls, F, user_input, sol,
-            Nsim=NSIM
+            Nsim=n
+            # Nsim=NSIM
             # , wstd=WSTD, vstd=VSTD, seed=SEED
         )
 
@@ -722,16 +836,8 @@ def main():
         plot_trajectory_per_controller(outdir, log, log_ref, sol, user_input, X_IDX, Y_IDX, Z_IDX)
 
         save_all_logs_as_csv(outdir, log, log_ref, sol, user_input)
-        # README metadata
-        # meta = {
-        #     "row_index": int(ridx),
-        #     "t": t, "n": n, "beta": beta, "acc_reg": accrg,
-        #     "Nsim": NSIM, "Nmpc": NMPC, "wstd": WSTD, "vstd": VSTD, "seed": SEED,
-        #     "user_pickle": str(user_pkl), "convexified_pickle": str(conv_pkl),
-        #     "notes": "Closed-loop with optional disturbances; non-interactive plots saved."
-        # }
-        # with open(outdir / "README.txt", "w") as f:
-        #     f.write(json.dumps(meta, indent=2))
+        save_controller_ipopt_stats_csvs(outdir, ctrls, log)
+        
 
         print(f"✔ Row {ridx}: saved -> {outdir}")
 
